@@ -29,7 +29,7 @@ export const defaultSources: AddonSource[] = [
 		description: 'Automated "Looking For More" broadcaster for Turtle WoW dungeons and raids'
 	},
 	{
-		git: 'https://github.com/shirsig/aux-addon-vanilla.git',
+		git: 'https://github.com/OldManAlpha/aux-addon.git',
 		name: 'aux-addon',
 		description: 'Auction House replacement with advanced filtering and search'
 	},
@@ -48,7 +48,7 @@ export const defaultSources: AddonSource[] = [
 		git: 'https://github.com/MDGitHubRepo/CallOfElements.git',
 		description: 'All-in-one Shaman totem bar and totem/healing manager'
 	},
-	{ git: 'https://github.com/bhhandley/CleveRoidMacros.git' },
+	{ git: 'https://github.com/cutiepoka/CleveRoidMacros.git' },
 	{
 		git: 'https://github.com/Cinecom/ConsumesManager.git',
 		description: 'Tracks consumables and food buffs across alts, bank, and mail'
@@ -66,7 +66,7 @@ export const defaultSources: AddonSource[] = [
 		git: 'https://github.com/DeterminedPanda/DifficultBulletinBoard.git',
 		description: 'Organizes LFG, profession, and hardcore chat announcements into a bulletin board'
 	},
-	{ git: 'https://github.com/Player-Doite/DoiteAuras.git' },
+	{ git: 'https://github.com/pepopo978/DoiteAuras.git' },
 	{ git: 'https://github.com/Stormhand-dev/DragonflightUI-Reforged.git' },
 	{
 		git: 'https://github.com/Fiurs-Hearth/ExtraResourceBars.git',
@@ -98,14 +98,14 @@ export const defaultSources: AddonSource[] = [
 		description: 'Item set manager with quick-swap menus for inventory'
 	},
 	{
-		git: 'https://github.com/CosminPOP/_LazyPig.git',
+		git: 'https://github.com/Otari98/_LazyPig.git',
 		name: '_LazyPig',
 		description: 'Auto-dismount, auto-accept, auto-roll, and chat spam filter. /lp to configure'
 	},
-	{ git: 'https://github.com/Spartelfant/LevelRange-Turtle.git' },
+	{ git: 'https://github.com/Dusk-92/LevelRange-Octo.git' },
 	{ git: 'https://github.com/tilare/MessageBox.git' },
 	{
-		git: 'https://github.com/tdymel/ModifiedPowerAuras.git',
+		git: 'https://github.com/MarcelineVQ/ModifiedPowerAuras.git',
 		description: "Advanced version of Sinesther's Power Auras"
 	},
 	{
@@ -118,7 +118,7 @@ export const defaultSources: AddonSource[] = [
 	},
 	{ git: 'https://github.com/tilare/MovementTracker.git' },
 	{
-		git: 'https://github.com/Dusk-92/NampowerSettings.git',
+		git: 'https://github.com/Emyrk/NampowerSettings.git',
 		description: 'Settings panel for the Nampower spellqueue addon'
 	},
 	{
@@ -140,7 +140,7 @@ export const defaultSources: AddonSource[] = [
 		description: 'Equipment set manager to save and quickly swap gear outfits, with Turtle mount fixes'
 	},
 	{
-		git: 'https://github.com/CosminPOP/PallyPower.git',
+		git: 'https://github.com/ShikawaLePaladin/PallyPowerTW.git',
 		description: 'Paladin buff and assignment manager for raids and parties'
 	},
 	{
@@ -148,7 +148,7 @@ export const defaultSources: AddonSource[] = [
 		description: 'pfQuest extension showing all monster drops and quest chains. /pfex'
 	},
 	{ git: 'https://github.com/shagu/pfQuest.git' },
-	{ git: 'https://github.com/shagu/pfQuest-turtle.git' },
+	{ git: 'https://github.com/KameleonUK/pfQuest-turtle.git' },
 	{ git: 'https://github.com/shagu/pfUI.git' },
 	{
 		git: 'https://github.com/jrc13245/pfUI-addonskinner.git',
@@ -170,7 +170,7 @@ export const defaultSources: AddonSource[] = [
 	},
 	{ git: 'https://github.com/SabineWren/Quiver.git' },
 	{
-		git: 'https://github.com/hazlema/Rested.git',
+		git: 'https://github.com/thezephyrsong/Rested.git',
 		description: 'Progress bar showing your rested XP while resting'
 	},
 	{ git: 'https://github.com/Otari98/Rinse.git' },
@@ -183,9 +183,9 @@ export const defaultSources: AddonSource[] = [
 		git: 'https://github.com/shagu/ShaguPlates.git',
 		description: 'Nameplates with castbars and class colors. /splates'
 	},
-	{ git: 'https://github.com/shagu/ShaguTweaks.git' },
+	{ git: 'https://github.com/paokkerkir/ShaguTweaks.git' },
 	{
-		git: 'https://github.com/shagu/ShaguTweaks-extras.git',
+		git: 'https://github.com/paokkerkir/ShaguTweaks-extras.git',
 		description: 'Extras module for ShaguTweaks (additional UI tweaks)'
 	},
 	{ git: 'https://github.com/pepopo978/SimpleActionSets.git' },

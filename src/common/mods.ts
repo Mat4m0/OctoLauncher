@@ -67,15 +67,15 @@ export const MODS: ModEntry[] = [
 	{
 		id: 'nampower',
 		name: 'nampower',
-		version: 'v4.6.0',
+		version: 'v4.6.2',
 		description:
 			'A client modification that minimizes your input lag if you have higher latency.',
-		repoUrl: 'https://gitea.com/avitasia/nampower',
+		repoUrl: 'https://github.com/Emyrk/nampower',
 		requires: ['vanillaFixes'],
 		source: {
 			kind: 'directFile',
-			url: 'https://gitea.com/avitasia/nampower/releases/download/v4.6.0/nampower.dll',
-			pinnedTag: 'v4.6.0',
+			url: 'https://github.com/Emyrk/nampower/releases/download/v4.6.2/nampower.dll',
+			pinnedTag: 'v4.6.2',
 			assetName: 'nampower.dll'
 		},
 		registerInDllsTxt: 'nampower.dll'
