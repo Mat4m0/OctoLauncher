@@ -26,6 +26,9 @@ type CacheEntry = { at: number; data: ResolvedAddon[] };
 let cache: CacheEntry | undefined;
 let inFlight: Promise<ResolvedAddon[]> | undefined;
 
+const normalizeColorCodes = (s: string): string =>
+	s.replace(/\|C(?=[0-9a-fA-F]{8})/g, '|c').replace(/\|R/g, '|r');
+
 const parseToc = (content: string): TocData =>
 	content
 		.split('\n')
@@ -38,7 +41,7 @@ const parseToc = (content: string): TocData =>
 		})
 		.filter((e): e is readonly [string, string] => !!e)
 		.reduce<TocData>((acc, [k, v]) => {
-			acc[k] = v;
+			acc[k] = normalizeColorCodes(v);
 			return acc;
 		}, {});
 
@@ -52,57 +55,129 @@ const fetchWithTimeout = async (url: string, init?: RequestInit) => {
 	}
 };
 
-const parseGitUrl = (git: string) => {
-	// https://github.com/{owner}/{repo}.git
-	const m = git.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/);
-	if (!m || !m[1] || !m[2]) throw Error(`Unsupported git URL: ${git}`);
-	return { owner: m[1], repo: m[2] };
+type RepoMeta = {
+	description?: string;
+	defaultBranch?: string;
+	lastUpdated?: string;
+	stars?: number;
+};
+
+type RawMeta = {
+	description?: string | null;
+	default_branch?: string;
+	pushed_at?: string | null;
+	updated_at?: string | null;
+	stargazers_count?: number | null;
+	stars_count?: number | null;
+};
+
+type Provider = {
+	apiUrl: (owner: string, repo: string) => string;
+	apiHeaders: () => Record<string, string>;
+	mapMeta: (json: RawMeta) => RepoMeta;
+	tocUrl: (owner: string, repo: string, ref: string, name: string) => string;
+};
+
+const githubProvider: Provider = {
+	apiUrl: (o, r) => `https://api.github.com/repos/${o}/${r}`,
+	apiHeaders: () => ({
+		Accept: 'application/vnd.github+json',
+		...(process.env.GITHUB_TOKEN && {
+			Authorization: `Bearer ${process.env.GITHUB_TOKEN}`
+		})
+	}),
+	mapMeta: j => ({
+		description: j.description ?? undefined,
+		defaultBranch: j.default_branch,
+		lastUpdated: j.pushed_at ?? undefined,
+		stars: j.stargazers_count ?? undefined
+	}),
+	tocUrl: (o, r, ref, name) =>
+		`https://raw.githubusercontent.com/${o}/${r}/${ref}/${name}.toc`
+};
+
+const GITEA_API = 'https://octowow.st/git/api/v1';
+const giteaProvider: Provider = {
+	apiUrl: (o, r) => `${GITEA_API}/repos/${o}/${r}`,
+	apiHeaders: () => ({ Accept: 'application/json' }),
+	mapMeta: j => ({
+		description: j.description ?? undefined,
+		defaultBranch: j.default_branch,
+		lastUpdated: j.updated_at ?? undefined,
+		stars: j.stars_count ?? undefined
+	}),
+	tocUrl: (o, r, ref, name) =>
+		`${GITEA_API}/repos/${o}/${r}/raw/${name}.toc?ref=${encodeURIComponent(ref)}`
+};
+
+const parseGitUrl = (
+	git: string
+): { owner: string; repo: string; provider: Provider } => {
+	const gh = git.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/);
+	if (gh && gh[1] && gh[2]) {
+		return { owner: gh[1], repo: gh[2], provider: githubProvider };
+	}
+	const gitea = git.match(/octowow\.st\/git\/([^/]+)\/([^/]+?)(?:\.git)?$/);
+	if (gitea && gitea[1] && gitea[2]) {
+		return { owner: gitea[1], repo: gitea[2], provider: giteaProvider };
+	}
+	throw Error(`Unsupported git URL: ${git}`);
+};
+
+const REQUIRED_TOC_KEYS = ['Interface'];
+
+const tryFetchToc = async (
+	provider: Provider,
+	owner: string,
+	repo: string,
+	name: string,
+	ref: string
+): Promise<TocData | undefined> => {
+	const res = await fetchWithTimeout(
+		provider.tocUrl(owner, repo, ref, name)
+	).catch(() => null);
+	if (!res?.ok) return undefined;
+	const parsed = parseToc(await res.text());
+	return REQUIRED_TOC_KEYS.every(k => typeof parsed[k] === 'string')
+		? parsed
+		: undefined;
 };
 
 const resolveOne = async (src: AddonSource): Promise<ResolvedAddon | null> => {
 	try {
-		const { owner, repo } = parseGitUrl(src.git);
+		const { owner, repo, provider } = parseGitUrl(src.git);
 		const name = src.name ?? repo;
-		const branch = src.branch ?? 'master';
-		const tocRef = src.ref ?? branch;
 
-		const tocUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${tocRef}/${name}.toc`;
-		const apiUrl = `https://api.github.com/repos/${owner}/${repo}`;
+		const apiRes = await fetchWithTimeout(provider.apiUrl(owner, repo), {
+			headers: provider.apiHeaders()
+		}).catch(() => null);
 
-		const [tocRes, apiRes] = await Promise.all([
-			fetchWithTimeout(tocUrl).catch(() => null),
-			fetchWithTimeout(apiUrl, {
-				headers: {
-					Accept: 'application/vnd.github+json',
-					...(process.env.GITHUB_TOKEN && {
-						Authorization: `Bearer ${process.env.GITHUB_TOKEN}`
-					})
-				}
-			}).catch(() => null)
-		]);
+		let meta: RepoMeta | undefined;
+		if (apiRes?.ok) meta = provider.mapMeta((await apiRes.json()) as RawMeta);
+
+		const candidates = src.ref
+			? [src.ref]
+			: src.branch
+				? [src.branch]
+				: [...new Set([meta?.defaultBranch, 'master', 'main'].filter((b): b is string => !!b))];
 
 		let toc: TocData | undefined;
-		if (tocRes?.ok) {
-			const parsed = parseToc(await tocRes.text());
-			const required = ['Interface', 'Title', 'Author', 'Notes', 'Version'];
-			if (required.every(k => typeof parsed[k] === 'string')) {
-				toc = parsed;
+		let resolvedRef: string | undefined;
+		for (const ref of candidates) {
+			toc = await tryFetchToc(provider, owner, repo, name, ref);
+			if (toc) {
+				resolvedRef = ref;
+				break;
 			}
 		}
 
-		let description: string | undefined;
-		let lastUpdated: string | undefined;
-		let stars: number | undefined;
-		if (apiRes?.ok) {
-			const meta = (await apiRes.json()) as {
-				description?: string;
-				pushed_at?: string;
-				stargazers_count?: number;
-			};
-			description = meta.description ?? undefined;
-			lastUpdated = meta.pushed_at;
-			stars = meta.stargazers_count;
-		}
+		const effectiveBranch = src.ref
+			? undefined
+			: src.branch ?? resolvedRef ?? meta?.defaultBranch;
+
+		let description = meta?.description ?? undefined;
+		const lastUpdated = meta?.lastUpdated;
+		const stars = meta?.stars;
 
 		if (src.description) {
 			description = src.description;
@@ -110,7 +185,7 @@ const resolveOne = async (src: AddonSource): Promise<ResolvedAddon | null> => {
 		}
 
 		const result: ResolvedAddon = { name, owner, git: src.git };
-		if (src.branch !== undefined) result.branch = src.branch;
+		if (effectiveBranch !== undefined) result.branch = effectiveBranch;
 		if (src.ref !== undefined) result.ref = src.ref;
 		if (toc !== undefined) result.toc = toc;
 		if (description !== undefined) result.description = description;
@@ -174,7 +249,6 @@ export const getAddons = async (force = false): Promise<ResolvedAddon[]> => {
 	if (!force && cache && Date.now() - cache.at < CACHE_TTL_MS) {
 		return cache.data;
 	}
-	// Deduplicate concurrent callers — only one scrape in flight at a time.
 	if (inFlight) return inFlight;
 	inFlight = buildList()
 		.then(data => {

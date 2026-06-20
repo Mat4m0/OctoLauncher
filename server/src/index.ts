@@ -1,61 +1,86 @@
 import path from 'path';
 
-import { config as loadEnv } from 'dotenv';
 import express from 'express';
-
-loadEnv();
-
 import fs from 'fs-extra';
-import { buildCache } from './cache.js';
+import { buildCache, type BuildProgress } from './cache.js';
 import { getAddons, warmUp as warmUpAddons } from './addons-resolver.js';
 
-// Set SOURCE_DIR to your local WoW client directory (see server/.env.example).
-const SourceDir: string = (() => {
-	const dir = process.env.SOURCE_DIR;
-	if (!dir) {
-		console.error(
-			'ERROR: SOURCE_DIR is not set.\n' +
-				'Set it to your local WoW client directory.\n' +
-				'Example: SOURCE_DIR="C:\\\\WoW\\\\client" npm run dev\n' +
-				'Or create server/.env — see server/.env.example.'
-		);
-		process.exit(1);
-	}
-	return dir;
-})();
+const SourceDir = process.env.SOURCE_DIR || 'C:\\WoW\\TurtleFresh';
 
 const app = express();
 const port = 5000;
 
+const buildProgress: BuildProgress = {
+	state: 'idle',
+	done: 0,
+	total: 0,
+	currentFile: '',
+	startedAt: null,
+	finishedAt: null,
+	error: null
+};
+
 let buildInFlight: Promise<void> | null = null;
 const ensureManifestBuilt = (): Promise<void> => {
 	if (buildInFlight) return buildInFlight;
-	buildInFlight = buildCache(SourceDir).catch(e => {
-		buildInFlight = null;
-		throw e;
-	});
+	buildProgress.state = 'building';
+	buildProgress.done = 0;
+	buildProgress.total = 0;
+	buildProgress.currentFile = '';
+	buildProgress.startedAt = Date.now();
+	buildProgress.finishedAt = null;
+	buildProgress.error = null;
+	buildInFlight = buildCache(SourceDir, p => {
+		buildProgress.done = p.done;
+		buildProgress.total = p.total;
+		buildProgress.currentFile = p.currentFile;
+	})
+		.then(() => {
+			buildProgress.state = 'ready';
+			buildProgress.finishedAt = Date.now();
+		})
+		.catch(e => {
+			buildProgress.state = 'failed';
+			buildProgress.error = e instanceof Error ? e.message : String(e);
+			buildProgress.finishedAt = Date.now();
+			buildInFlight = null;
+			throw e;
+		});
 	return buildInFlight;
 };
+
+app.get('/api/build-status', (_req, res) => {
+	res.json(buildProgress);
+});
 
 app.get('/api/file/:version/manifest.json', async (_req, res) => {
 	console.log(`Fetching manifest`);
 	const filePath = path.join(SourceDir, 'manifest.json');
-	if (!fs.existsSync(filePath)) await ensureManifestBuilt();
 
-	res.json(await fs.readJSON(filePath));
+	if (await fs.pathExists(filePath)) {
+		res.json(await fs.readJSON(filePath));
+		return;
+	}
+
+	void ensureManifestBuilt().catch(() => {
+	});
+	res.setHeader('Retry-After', '5');
+	res.status(503).json({
+		error: 'manifest_building',
+		message:
+			'Manifest is being built for the first time on this server. ' +
+			'Poll /api/build-status for progress; retry this endpoint when ready.',
+		buildProgress
+	});
 });
 
 app.get(
 	'/api/file/:version/*',
 	async (req: express.Request<{ 0: string }>, res) => {
 		const filePath = req.params[0];
-		const resolved = path.resolve(SourceDir, filePath);
-		if (!resolved.startsWith(path.resolve(SourceDir) + path.sep)) {
-			res.status(403).send('Forbidden');
-			return;
-		}
 		console.log(`Fetching file: ${filePath}`);
-		res.sendFile(resolved);
+
+		res.sendFile(path.join(SourceDir, filePath));
 	}
 );
 
@@ -70,19 +95,65 @@ app.get('/api/addons.json', async (req, res) => {
 	}
 });
 
+const newestSourceMtime = async (dir: string): Promise<number> => {
+	let newest = 0;
+	const entries = await fs.readdir(dir);
+	for (const name of entries) {
+		if (name === 'manifest.json' || name === 'manifest.json.tmp') continue;
+		const full = path.join(dir, name);
+		const stat = await fs.stat(full);
+		if (stat.isDirectory()) {
+			const inner = await newestSourceMtime(full);
+			if (inner > newest) newest = inner;
+		} else if (stat.mtimeMs > newest) {
+			newest = stat.mtimeMs;
+		}
+	}
+	return newest;
+};
+
 app.listen(port, () => {
 	console.log(`Server listening on port ${port}`);
 	warmUpAddons();
 
 	void (async () => {
 		const manifestPath = path.join(SourceDir, 'manifest.json');
-		if (fs.existsSync(manifestPath)) return;
-		console.log(`Pre-warming manifest cache for ${SourceDir}...`);
+		if (!fs.existsSync(manifestPath)) {
+			console.log(`Pre-warming manifest cache for ${SourceDir}...`);
+			try {
+				await ensureManifestBuilt();
+				console.log(`Manifest cache pre-warm complete.`);
+			} catch (e) {
+				console.error(
+					'Manifest pre-warm failed (will fall back to lazy build on first request):',
+					e
+				);
+			}
+			return;
+		}
+
+		buildProgress.state = 'ready';
+		buildProgress.finishedAt = Date.now();
+
 		try {
-			await ensureManifestBuilt();
-			console.log(`Manifest cache pre-warm complete.`);
+			const manifestStat = await fs.stat(manifestPath);
+			const newest = await newestSourceMtime(SourceDir);
+			if (newest > manifestStat.mtimeMs) {
+				console.log(
+					`Manifest is stale (newest source mtime ${new Date(newest).toISOString()} > manifest ${new Date(manifestStat.mtimeMs).toISOString()}); rebuilding in background.`
+				);
+				ensureManifestBuilt()
+					.then(() => console.log('Background manifest rebuild complete.'))
+					.catch(e =>
+						console.error('Background manifest rebuild failed:', e)
+					);
+			} else {
+				console.log(
+					`Manifest cache already on disk at ${manifestPath} and up to date; no rebuild needed.`
+				);
+			}
 		} catch (e) {
-			console.error('Manifest pre-warm failed:', e);
+			console.error('Manifest staleness check failed:', e);
 		}
 	})();
 });
