@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { PreferencesSchema } from '~common/schemas';
 import Preferences from '~main/modules/preferences';
+import { applyLocalePatch } from '~main/modules/localePatch';
 
 import { createTRPCRouter, publicProcedure } from '../trpc';
 
@@ -11,6 +12,8 @@ export const preferencesRouter = createTRPCRouter({
 		.input(PreferencesSchema.partial())
 		.mutation(async ({ input }) => {
 			Preferences.data = input;
+			if (input.locale !== undefined)
+				await applyLocalePatch(Preferences.data.clientDir, input.locale);
 			return Preferences.data;
 		}),
 	isValidClientDir: publicProcedure

@@ -53,7 +53,7 @@ const TextButton = ({
 		{loading ? (
 			<IconSpinner size={size ?? 24} strokeWidth={1.5} />
 		) : (
-			Icon && <Icon size={size} />
+			Icon && <Icon size={size} className="shrink-0" />
 		)}
 		{children && (
 			<span className="cursor-pointer select-none tracking-wide text-inherit [font-size:_inherit]">

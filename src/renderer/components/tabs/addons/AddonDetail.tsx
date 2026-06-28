@@ -16,6 +16,7 @@ import { ColoredText } from '~renderer/components/styled/ColoredText';
 import useScrollHint from '~renderer/utils/useScrollHint';
 import IconSpinner from '~renderer/components/styled/IconSpinner';
 import CloseButton from '~renderer/components/styled/CloseButton';
+import { useT } from '~renderer/i18n';
 
 import { type LocalDependencies } from './AddonListItem';
 
@@ -41,6 +42,7 @@ type Props = AddonData & {
 };
 
 const AddonDetail = ({ close, warnings, dependencies, ...addon }: Props) => {
+	const t = useT();
 	const openLink = api.general.openLink.useMutation();
 	const update = api.addons.update.useMutation();
 
@@ -71,26 +73,26 @@ const AddonDetail = ({ close, warnings, dependencies, ...addon }: Props) => {
 				<ColoredText>{addon.toc?.Notes ?? addon.description ?? ''}</ColoredText>
 			)}
 			<div>
-				<AddonDetailItem name="Source">
+				<AddonDetailItem name={t('addons.detailSource')}>
 					{addon.git && (
 						<TextButton
 							onClick={() => openLink.mutateAsync(addon.git)}
 							className="s1 -m-2 !inline"
 						>
-							Open on GitHub
+							{t('addons.openOnGithubShort')}
 							<ExternalLink size={12} className="ml-1 inline" />
 						</TextButton>
 					)}
 				</AddonDetailItem>
 				{addon.toc && (
 					<>
-						<AddonDetailItem name="Contributions">
+						<AddonDetailItem name={t('addons.detailContributions')}>
 							{addon.toc.Author}
 						</AddonDetailItem>
-						<AddonDetailItem name="Addon version">
+						<AddonDetailItem name={t('addons.detailAddonVersion')}>
 							{addon.toc.Version}
 						</AddonDetailItem>
-						<AddonDetailItem name="Dependencies">
+						<AddonDetailItem name={t('addons.detailDependencies')}>
 							{!!dependencies.length && (
 								<ul className="pl-2">
 									{dependencies.map(({ name, optional, status }) => (
@@ -99,7 +101,7 @@ const AddonDetail = ({ close, warnings, dependencies, ...addon }: Props) => {
 												<Check size={16} className="inline text-darkGreen" />
 											) : status === 'available' ? (
 												<TextButton
-													title="Download"
+													title={t('addons.download')}
 													icon={DownloadCloud}
 													size={16}
 													onClick={() =>
@@ -122,7 +124,9 @@ const AddonDetail = ({ close, warnings, dependencies, ...addon }: Props) => {
 											) ? (
 												<p className="s1 inline text-blueGray">{status}</p>
 											) : optional ? (
-												<p className="s1 inline text-blueGray">(optional)</p>
+												<p className="s1 inline text-blueGray">
+													{t('addons.optional')}
+												</p>
 											) : null}
 										</li>
 									))}

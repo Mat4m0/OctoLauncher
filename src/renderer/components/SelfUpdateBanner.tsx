@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { api } from '~renderer/utils/api';
+import { useT } from '~renderer/i18n';
 
 import Button from './styled/Button';
 
@@ -19,6 +20,7 @@ type Status =
 	| { state: 'error'; currentVersion: string; message: string };
 
 const SelfUpdateBanner = () => {
+	const t = useT();
 	const [status, setStatus] = useState<Status>({
 		state: 'idle',
 		currentVersion: ''
@@ -39,16 +41,19 @@ const SelfUpdateBanner = () => {
 	const tone = status.state === 'error' ? 'border-red/40' : 'border-tw/40';
 	const label =
 		status.state === 'error'
-			? `Update check failed: ${status.message}`
+			? t('misc.selfUpdateCheckFailed', { message: status.message })
 			: status.state === 'available'
-				? `Launcher update ${'nextVersion' in status ? status.nextVersion : ''} available — preparing download…`
-				: status.state === 'downloading'
-					? `Downloading update ${status.nextVersion} · ${Math.round(
-							status.progress * 100
-						)}%`
-					: status.state === 'ready'
-						? `Launcher update ${status.nextVersion} ready to install`
-						: '';
+			? t('misc.selfUpdateAvailable', {
+					version: status.nextVersion
+			  })
+			: status.state === 'downloading'
+			? t('misc.selfUpdateDownloading', {
+					version: status.nextVersion,
+					percent: Math.round(status.progress * 100)
+			  })
+			: status.state === 'ready'
+			? t('misc.selfUpdateReady', { version: status.nextVersion })
+			: '';
 
 	return (
 		<div
@@ -61,7 +66,7 @@ const SelfUpdateBanner = () => {
 					onClick={() => install.mutateAsync()}
 					disabled={install.isLoading}
 				>
-					Install now
+					{t('misc.selfUpdateInstallNow')}
 				</Button>
 			)}
 		</div>

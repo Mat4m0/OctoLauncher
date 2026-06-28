@@ -6,8 +6,15 @@ import fs from 'fs-extra';
 
 import Preferences from './modules/preferences';
 
-const isCallbackResponse = (data: any): data is { cb: string; args: any[] } =>
-	data && typeof data === 'object' && 'cb' in data && 'args' in data;
+const isCallbackResponse = (
+	data: unknown
+): data is { cb: string; args: unknown[] } =>
+	typeof data === 'object' &&
+	data !== null &&
+	'cb' in data &&
+	typeof (data as { cb: unknown }).cb === 'string' &&
+	'args' in data &&
+	Array.isArray((data as { args: unknown }).args);
 
 export const runWorker = <T>(
 	worker: (o: WorkerOptions) => Worker,
@@ -16,10 +23,16 @@ export const runWorker = <T>(
 ) =>
 	new Promise<T>((resolve, reject) =>
 		worker({ workerData })
-			.on('message', m =>
-				isCallbackResponse(m) ? callbacks?.[m.cb](...m.args) : resolve(m)
-			)
+			.on('message', (m: unknown) => {
+				if (!isCallbackResponse(m)) return resolve(m as T);
+				const callback = callbacks?.[m.cb];
+				if (callback) callback(...m.args);
+				else Logger.warn('Unknown worker callback', m.cb);
+			})
 			.on('error', reject)
+			.on('exit', code =>
+				reject(new Error(`Worker exited (code ${code}) without finishing`))
+			)
 	);
 
 export const getClientVersion = async () => {
@@ -35,8 +48,22 @@ export const getClientVersion = async () => {
 	const file = await fs.readFile(exePath);
 	const buffer = Buffer.from(file);
 
-	const version = buffer.toString('utf-8', 0x00437c04, 0x00437c04 + 6);
-	const build = buffer.toString('utf-8', 0x00437bfc, 0x00437bfc + 4);
+	// Fixed addresses in the 1.12.1 client binary.
+	const VERSION_OFFSET = 0x00437c04;
+	const VERSION_LEN = 6;
+	const BUILD_OFFSET = 0x00437bfc;
+	const BUILD_LEN = 4;
+
+	const version = buffer.toString(
+		'utf-8',
+		VERSION_OFFSET,
+		VERSION_OFFSET + VERSION_LEN
+	);
+	const build = buffer.toString(
+		'utf-8',
+		BUILD_OFFSET,
+		BUILD_OFFSET + BUILD_LEN
+	);
 
 	Logger.log(`Client version is: ${version} (${build})`);
 	return `${version} (${build})`;

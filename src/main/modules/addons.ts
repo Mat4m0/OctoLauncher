@@ -35,22 +35,51 @@ type AddonsList = {
 }[];
 
 const readTocData = (content: string) =>
-	content
+	(content.charCodeAt(0) === 0xfeff ? content.slice(1) : content)
 		.split('\n')
 		.filter(l => l.startsWith('## '))
 		.map(l => l.slice(3))
 		.map(l => {
-			const [key, value] = l.split(':');
-			return [key.trim(), value.trim()];
+			const idx = l.indexOf(':');
+			if (idx === -1) return null;
+			return [l.slice(0, idx).trim(), l.slice(idx + 1).trim()] as const;
 		})
+		.filter((e): e is readonly [string, string] => !!e)
 		.reduce((acc, [key, value]) => {
 			acc[key] = value;
 			return acc;
 		}, {} as TocData);
 
+const isUnsafeFolder = (name?: string) =>
+	!name || name === '.' || name === '..' || /[/\\]/.test(name);
+
+// only allow known git hosts over https
+const ALLOWED_GIT_HOSTS = [
+	'github.com',
+	'gitlab.com',
+	'gitea.com',
+	'codeberg.org',
+	'octowow.st'
+];
+
+const isAllowedGitUrl = (url: string) => {
+	try {
+		const parsed = new URL(url);
+		if (parsed.protocol !== 'https:') return false;
+		const host = parsed.hostname.toLowerCase();
+		return ALLOWED_GIT_HOSTS.some(h => host === h || host.endsWith('.' + h));
+	} catch {
+		return false;
+	}
+};
+
 const fetchAddons = async () => {
 	try {
-		const response = await fetch(`${import.meta.env.MAIN_VITE_SERVER_URL || 'https://octowow.st'}/api/addons.json`);
+		const response = await fetch(
+			`${
+				import.meta.env.MAIN_VITE_SERVER_URL || 'https://octowow.st'
+			}/api/addons.json`
+		);
 		return (await response.json()) as AddonsList;
 	} catch (e) {
 		Logger.error('Failed to reach update server', e);
@@ -103,35 +132,36 @@ class AddonsClass extends Observable<AddonsStatus> {
 		};
 
 	async checkGitUrl(url: string) {
-		const gitUrl = url.endsWith('.git') ? url : `${url}.git`;
+		const clean = url.trim().replace(/\/+$/, '');
+		const gitUrl = clean.endsWith('.git') ? clean : `${clean}.git`;
+		if (!isAllowedGitUrl(gitUrl)) return undefined;
 		try {
 			await git.getRemoteInfo({
 				http,
 				url: gitUrl
 			});
 
-			// Only fetch preview from known public git hosts to prevent SSRF.
-			const allowed = ['github.com', 'gitlab.com', 'gitea.com', 'codeberg.org'];
 			let preview: string | undefined;
 			try {
-				const host = new URL(url).hostname.toLowerCase();
-				if (allowed.some(h => host === h || host.endsWith('.' + h))) {
+				if (isAllowedGitUrl(url)) {
 					const response = await fetch(url).then(r => r.text());
 					preview = response.match(
 						/property="og:image" content="([^"]*)"/
 					)?.[1];
 				}
 			} catch {
-				// preview stays undefined
+				/* ignore */
 			}
 
+			const folder = gitUrl.slice(0, -4).split('/').at(-1);
+			if (isUnsafeFolder(folder)) return undefined;
 			return {
 				status: 'available',
-				folder: gitUrl.slice(0, -4).split('/').at(-1),
+				folder,
 				git: gitUrl,
 				preview
 			} as AddonData;
-		} catch (e) {
+		} catch {
 			return undefined;
 		}
 	}
@@ -162,7 +192,7 @@ class AddonsClass extends Observable<AddonsStatus> {
 		}
 
 		const addonsPath = path.join(clientPath, 'Interface', 'Addons');
-		const dirs = await fs.pathExists(addonsPath)
+		const dirs = (await fs.pathExists(addonsPath))
 			? await fs.readdir(addonsPath)
 			: [];
 		const addons: AddonsStatus['addons'] = Object.fromEntries(
@@ -223,9 +253,7 @@ class AddonsClass extends Observable<AddonsStatus> {
 					.catch(() => null);
 
 				const remoteCommit = avail?.ref
-					? await git
-							.resolveRef({ fs, dir, ref: avail.ref })
-							.catch(() => null)
+					? await git.resolveRef({ fs, dir, ref: avail.ref }).catch(() => null)
 					: await git
 							.log({ fs, dir, ref: `${remote.remote}/${branch}`, depth: 1 })
 							.then(r => r[0].oid)
@@ -249,7 +277,9 @@ class AddonsClass extends Observable<AddonsStatus> {
 
 				Logger.log(
 					isUpToDate
-						? `Addon "${folder}" is up to date${avail?.ref ? ` (pinned ${avail.ref})` : ''}`
+						? `Addon "${folder}" is up to date${
+								avail?.ref ? ` (pinned ${avail.ref})` : ''
+						  }`
 						: `Addon "${folder}" has an update available`
 				);
 			} catch (e) {
@@ -268,13 +298,16 @@ class AddonsClass extends Observable<AddonsStatus> {
 		const VERIFY_CONCURRENCY = 6;
 		let idx = 0;
 		await Promise.all(
-			Array.from({ length: Math.min(VERIFY_CONCURRENCY, folders.length) }, async () => {
-				while (true) {
-					const i = idx++;
-					if (i >= folders.length) return;
-					await verifyOne(folders[i]);
+			Array.from(
+				{ length: Math.min(VERIFY_CONCURRENCY, folders.length) },
+				async () => {
+					while (true) {
+						const i = idx++;
+						if (i >= folders.length) return;
+						await verifyOne(folders[i]);
+					}
 				}
-			})
+			)
 		);
 
 		this.status = { ...this.status, state: 'done' };
@@ -330,7 +363,7 @@ class AddonsClass extends Observable<AddonsStatus> {
 						{ onProgress: this.#onProgress(folder, data) }
 					);
 				}
-				const toc = await readTocData(
+				const toc = readTocData(
 					await fs.readFile(path.join(dir, `${folder}.toc`), 'utf-8')
 				);
 
@@ -363,6 +396,25 @@ class AddonsClass extends Observable<AddonsStatus> {
 	async install(data: AddonData) {
 		const clientPath = Preferences.data.clientDir;
 		if (!clientPath) return;
+		if (isUnsafeFolder(data.folder)) {
+			Logger.error(`Refusing addon with unsafe folder name: "${data.folder}"`);
+			this.#setAddon(data.folder, {
+				...data,
+				status: 'invalid',
+				error: 'Invalid addon name'
+			});
+			return;
+		}
+
+		if (!data.git || !isAllowedGitUrl(data.git)) {
+			Logger.error(`Refusing addon from disallowed git host: "${data.git}"`);
+			this.#setAddon(data.folder, {
+				...data,
+				status: 'invalid',
+				error: 'Addon URL is not from an allowed git host'
+			});
+			return;
+		}
 
 		const addonsPath = path.join(clientPath, 'Interface', 'Addons');
 		const dir = path.join(addonsPath, data.folder);

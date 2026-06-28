@@ -11,6 +11,7 @@ import log from 'electron-log/renderer';
 import { api } from './utils/api';
 import App from './App';
 import ErrorBoundary from './ErrorBoundary';
+import { LocaleProvider } from './i18n';
 
 import './index.css';
 
@@ -56,7 +57,9 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
 		<ErrorBoundary>
 			<api.Provider client={trpcClient} queryClient={queryClient}>
 				<QueryClientProvider client={queryClient}>
-					<App />
+					<LocaleProvider>
+						<App />
+					</LocaleProvider>
 					{import.meta.env.DEV && <ReactQueryDevtools />}
 				</QueryClientProvider>
 			</api.Provider>

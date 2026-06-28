@@ -50,6 +50,7 @@ const getAvailableDiskSpace = async (probePath?: string): Promise<number> => {
 		os.homedir() ||
 		(os.platform() === 'win32' ? 'C:\\' : '/');
 	try {
+		// @ts-expect-error statfs exists at runtime (Node 18) but not @types/node 16
 		const s = await fs.promises.statfs(target);
 		return Number(s.bsize) * Number(s.bavail);
 	} catch (e) {
@@ -65,9 +66,21 @@ const isReadOnly = async (filePath: string) => {
 	try {
 		const { mode } = await fs.stat(filePath);
 		return !(mode & fs.constants.S_IWUSR);
-	} catch (e) {
+	} catch {
 		return false;
 	}
+};
+
+const friendlyError = (e: unknown): string => {
+	const msg = e instanceof Error ? e.message : String(e);
+	if (/EPERM|EACCES|EROFS|read-only/i.test(msg))
+		return (
+			'Cannot write to the game folder. Move your OctoWoW install out of ' +
+			'Program Files (or any protected folder), or run the launcher as ' +
+			'administrator, then try again.'
+		);
+	if (/ENOSPC/i.test(msg)) return 'Not enough disk space to finish the update.';
+	return msg;
 };
 
 type FolderTags = 'allowExtra';
@@ -141,18 +154,54 @@ export const isGameRunning = (executablePath: string) =>
 		  })
 		: false;
 
-const toUrlPath = (p: string) => p.split(path.sep).map(encodeURIComponent).join('/');
+const toUrlPath = (p: string) =>
+	p.split(path.sep).map(encodeURIComponent).join('/');
 
 const CDN_VERSION = import.meta.env.MAIN_VITE_CLIENT_VERSION || 'latest';
+
+const CONNECT_TIMEOUT_MS = 30_000;
+const STALL_TIMEOUT_MS = 60_000;
+
+const isUnsafeName = (name: string) =>
+	!name ||
+	name === '.' ||
+	name === '..' ||
+	/[/\\]/.test(name) ||
+	path.isAbsolute(name);
+
+const manifestPathsSafe = (m: FileManifest, isRoot = false): boolean => {
+	if (!isRoot && isUnsafeName(m.name)) return false;
+	if (m.type === 'dir' || m.type === 'mpq')
+		return m.files.every(f => manifestPathsSafe(f));
+	return true;
+};
 
 const fetchManifest = async () => {
 	try {
 		const r = await fetch(
-			`${import.meta.env.MAIN_VITE_SERVER_URL || 'https://octowow.st'}/api/file/${CDN_VERSION}/manifest.json`
+			`${
+				import.meta.env.MAIN_VITE_SERVER_URL || 'https://octowow.st'
+			}/api/file/${CDN_VERSION}/manifest.json`,
+			{ timeout: CONNECT_TIMEOUT_MS }
 		);
+		if (!r.ok) {
+			Logger.error(`Update server returned HTTP ${r.status}`);
+			return null;
+		}
 		const j = await r.json();
+		if (!j || typeof j !== 'object' || !('root' in j) || !j.root) {
+			Logger.error('Update server returned a malformed manifest');
+			return null;
+		}
+		const root = j.root as FileManifest;
+		if (!manifestPathsSafe(root, true)) {
+			Logger.error(
+				'Update server manifest has unsafe path names; refusing it.'
+			);
+			return null;
+		}
 		await fs.writeJSON(path.join(Preferences.userDataDir, 'manifest.json'), j);
-		return j.root as FileManifest;
+		return root;
 	} catch (e) {
 		Logger.error('Failed to reach update server', e);
 		return null;
@@ -160,22 +209,26 @@ const fetchManifest = async () => {
 };
 
 const buildClientUrl = (filePath: string) =>
-	`${import.meta.env.MAIN_VITE_SERVER_URL || 'https://octowow.st'}/client/${CDN_VERSION}/${toUrlPath(
-		path.normalize(filePath)
-	)}`;
+	`${
+		import.meta.env.MAIN_VITE_SERVER_URL || 'https://octowow.st'
+	}/client/${CDN_VERSION}/${toUrlPath(path.normalize(filePath))}`;
 
 export const fetchFile = async (
 	filePath: string,
 	onChunk?: (deltaBytes: number) => void
 ) => {
 	try {
-		const response = await fetch(buildClientUrl(filePath));
+		const response = await fetch(buildClientUrl(filePath), {
+			timeout: CONNECT_TIMEOUT_MS
+		});
 		if (!response.ok) throw Error(`HTTP ${response.status}`);
 		if (!onChunk || !response.body) return await response.arrayBuffer();
 
 		const chunks: Buffer[] = [];
 		for await (const chunk of response.body as NodeJS.ReadableStream) {
-			const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array);
+			const buf = Buffer.isBuffer(chunk)
+				? chunk
+				: Buffer.from(chunk);
 			chunks.push(buf);
 			onChunk(buf.byteLength);
 		}
@@ -203,7 +256,8 @@ export const downloadFileToDisk = async (
 		else if (stats.size >= expectedSize) {
 			await fs.truncate(partPath, 0);
 		}
-	} catch {
+	} catch (e) {
+		Logger.warn(`Failed to resume from "${partPath}".`, e);
 	}
 
 	if (resumeFrom > 0) onChunk(resumeFrom);
@@ -212,20 +266,25 @@ export const downloadFileToDisk = async (
 	const headers: Record<string, string> = {};
 	if (resumeFrom > 0) headers.Range = `bytes=${resumeFrom}-`;
 
+	const controller = new AbortController();
 	let response;
 	try {
-		response = await fetch(url, { headers });
+		response = await fetch(url, {
+			headers,
+			signal: controller.signal,
+			timeout: CONNECT_TIMEOUT_MS
+		});
 	} catch (e) {
 		Logger.error(`Network error downloading ${filePath}`, e);
 		throw Error(`Failed to download ${path.normalize(filePath)}`);
 	}
 
 	if (!response.ok && response.status !== 206) {
-		throw Error(`Failed to download ${path.normalize(filePath)}: HTTP ${response.status}`);
+		throw Error(
+			`Failed to download ${path.normalize(filePath)}: HTTP ${response.status}`
+		);
 	}
 
-	// If we got 200, the server gave us the whole file
-	// roll back and truncate
 	if (resumeFrom > 0 && response.status === 200) {
 		onChunk(-resumeFrom);
 		await fs.truncate(partPath, 0);
@@ -236,6 +295,7 @@ export const downloadFileToDisk = async (
 		flags: resumeFrom > 0 ? 'a' : 'w'
 	});
 
+	let stalled = false;
 	try {
 		await new Promise<void>((resolve, reject) => {
 			if (!response.body) {
@@ -243,26 +303,53 @@ export const downloadFileToDisk = async (
 				return;
 			}
 			const body = response.body as NodeJS.ReadableStream;
+			let stallTimer: NodeJS.Timeout;
+			const armStall = () => {
+				clearTimeout(stallTimer);
+				stallTimer = setTimeout(() => {
+					stalled = true;
+					controller.abort();
+				}, STALL_TIMEOUT_MS);
+			};
+			armStall();
 			body.on('data', (chunk: Buffer | Uint8Array) => {
+				armStall();
 				const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
 				if (!writeStream.write(buf)) body.pause();
 				onChunk(buf.byteLength);
 			});
 			writeStream.on('drain', () => body.resume());
-			body.on('end', () => writeStream.end(resolve));
-			body.on('error', reject);
-			writeStream.on('error', reject);
+			body.on('end', () => {
+				clearTimeout(stallTimer);
+				writeStream.end(resolve);
+			});
+			body.on('error', err => {
+				clearTimeout(stallTimer);
+				reject(err);
+			});
+			writeStream.on('error', err => {
+				clearTimeout(stallTimer);
+				reject(err);
+			});
 		});
 	} catch (e) {
 		writeStream.destroy();
 		Logger.error(`Download interrupted for ${filePath}`, e);
-		throw Error(`Failed to download ${path.normalize(filePath)}`);
+		throw Error(
+			stalled
+				? `Download stalled for ${path.normalize(
+						filePath
+				  )}; no data received in ${STALL_TIMEOUT_MS / 1000}s.`
+				: `Failed to download ${path.normalize(filePath)}`
+		);
 	}
 
 	const finalStats = await fs.stat(partPath);
 	if (finalStats.size !== expectedSize) {
 		throw Error(
-			`Size mismatch for ${path.normalize(filePath)}: got ${finalStats.size}, expected ${expectedSize}. Will retry on next run.`
+			`Size mismatch for ${path.normalize(filePath)}: got ${
+				finalStats.size
+			}, expected ${expectedSize}. Will retry on next run.`
 		);
 	}
 
@@ -465,6 +552,10 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 
 		try {
 			const vanillaFixes = Preferences.data.config.vanillaFixes;
+			const modOwnedFiles = new Set<string>();
+			for (const state of Object.values(Preferences.data.mods ?? {}))
+				for (const rel of state?.installedFiles ?? [])
+					modOwnedFiles.add(rel.replace(/\\/g, '/').toLowerCase());
 
 			const hashTree = await fetchManifest();
 			if (!hashTree) {
@@ -582,11 +673,10 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 							SFileCloseArchive(hMpq);
 						}
 					} catch (e) {
-						Logger.log(
+						Logger.warn(
 							`Failed to verify ${path.join(
 								...patchPath
 							)}, will be downloaded fresh`,
-							'warning',
 							e
 						);
 						return {
@@ -598,13 +688,13 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 					}
 				}
 
-				if (item.tags?.includes('vanillaFixes') && !vanillaFixes) {
-					if (await fs.exists(path.join(clientPath, ...filePath))) {
-						return {
-							type: 'del',
-							name: item.name
-						};
-					} else {
+				if (item.tags?.includes('vanillaFixes')) {
+					if (modOwnedFiles.has(filePath.join('/').toLowerCase()))
+						return undefined;
+
+					if (!vanillaFixes) {
+						if (await fs.exists(path.join(clientPath, ...filePath)))
+							return { type: 'del', name: item.name };
 						return undefined;
 					}
 				}
@@ -678,8 +768,7 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 			const currentLauncherVersion = app.getVersion();
 			if (
 				this.status.state === 'upToDate' &&
-				Preferences.data.lastPatchedLauncherVersion !==
-					currentLauncherVersion
+				Preferences.data.lastPatchedLauncherVersion !== currentLauncherVersion
 			) {
 				Logger.log(
 					`Launcher version changed (${
@@ -710,8 +799,7 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 				})();
 			}
 		} catch (e) {
-			const message =
-				e instanceof Error ? e.message : 'Unexpected error occurred';
+			const message = friendlyError(e);
 			Logger.error(`Verification failed: ${message}`, e);
 			this.status = { state: 'failed', message };
 		}
@@ -744,6 +832,22 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 
 		try {
 			if (clean) {
+				// never wipe a drive root or a non-client dir
+				const resolvedClientPath = path.resolve(clientPath);
+				const isFilesystemRoot =
+					path.parse(resolvedClientPath).root === resolvedClientPath;
+				if (
+					isFilesystemRoot ||
+					!fs.existsSync(path.join(resolvedClientPath, 'WoW.exe'))
+				) {
+					this.status = {
+						state: 'failed',
+						message:
+							'Refusing to clean: the client folder does not look like a valid WoW install.'
+					};
+					return;
+				}
+
 				this.status = {
 					state: 'updating',
 					progress: -1,
@@ -804,12 +908,10 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 				if (!item) return undefined;
 
 				if (item.type === 'del') {
-					throw Error(
-						`TODO: Deleting of files from MPQ not implemented at path ${path.join(
-							...mpqPath,
-							...filePath
-						)}`
-					);
+					if (SFileHasFile(hMpq, path.join(...filePath)))
+						SFileRemoveFile(hMpq, path.join(...filePath));
+					nestedSet(this.#cache, [...mpqPath, ...filePath], undefined);
+					return;
 				}
 
 				if (item.type === 'dir') {
@@ -826,7 +928,9 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 						)}`
 					);
 
-				const label = `Patching: [${mpqPath.at(-1)}] "${path.join(...filePath)}"`;
+				const label = `Patching: [${mpqPath.at(-1)}] "${path.join(
+					...filePath
+				)}"`;
 				emitProgress(label, true);
 
 				const data = await fetchFile(
@@ -853,6 +957,7 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 				} finally {
 					SFileFinishFile(hFile);
 				}
+				nestedSet(this.#cache, [...mpqPath, ...filePath], undefined);
 			};
 
 			const iterateTree = async (...filePath: string[]) => {
@@ -922,7 +1027,7 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 				if (item.name === 'WoW.exe') executableUpdate = true;
 
 				const fullPath = path.join(clientPath, ...filePath);
-				if (await fs.exists(fullPath) && (await isReadOnly(fullPath)))
+				if ((await fs.exists(fullPath)) && (await isReadOnly(fullPath)))
 					throw Error(`Failed to update "${fullPath}" because it's read-only.`);
 
 				await downloadFileToDisk(
@@ -947,7 +1052,6 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 
 			if (executableUpdate || launcherVersionChanged) {
 				await patchExecutable();
-				await this.#getHash({ clientPath }, 'WoW.exe');
 				const patchedWowHash = await this.#getHash({ clientPath }, 'WoW.exe');
 				await this.#saveCache();
 				Preferences.data = {
@@ -960,12 +1064,20 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 			this.#bytesAlreadyOnDisk = fullClientTotal;
 			this.status = { state: 'upToDate', progress: 1 };
 		} catch (e) {
-			console.error(e);
-			this.status = {
-				state: 'failed',
-				message: e instanceof Error ? e.message : 'Unexpected error occurred'
-			};
+			Logger.error('Update failed', e);
+			this.status = { state: 'failed', message: friendlyError(e) };
 		}
+	}
+
+	async recordPatchedWow() {
+		const clientPath = Preferences.data.clientDir;
+		if (!clientPath) return;
+		const patchedWowHash = await this.#getHash({ clientPath }, 'WoW.exe');
+		await this.#saveCache();
+		Preferences.data = {
+			lastPatchedLauncherVersion: app.getVersion(),
+			expectedPatchedWowHash: patchedWowHash
+		};
 	}
 }
 

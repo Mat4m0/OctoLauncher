@@ -10,7 +10,12 @@ export type SelfUpdaterStatus =
 	| { state: 'checking'; currentVersion: string }
 	| { state: 'unavailable'; currentVersion: string }
 	| { state: 'available'; currentVersion: string; nextVersion: string }
-	| { state: 'downloading'; currentVersion: string; nextVersion: string; progress: number }
+	| {
+			state: 'downloading';
+			currentVersion: string;
+			nextVersion: string;
+			progress: number;
+	  }
 	| { state: 'ready'; currentVersion: string; nextVersion: string }
 	| { state: 'error'; currentVersion: string; message: string };
 
@@ -37,7 +42,7 @@ class SelfUpdaterClass extends Observable<SelfUpdaterStatus> {
 		this.#initialized = true;
 
 		if (is.dev) {
-			Logger.info('[selfUpdater] dev mode — skipping');
+			Logger.info('[selfUpdater] dev mode, skipping');
 			return;
 		}
 
@@ -83,7 +88,7 @@ class SelfUpdaterClass extends Observable<SelfUpdaterStatus> {
 		});
 		autoUpdater.on('update-downloaded', info => {
 			Logger.info(
-				`[selfUpdater] downloaded ${info.version} — awaiting user click`
+				`[selfUpdater] downloaded ${info.version}, awaiting user click`
 			);
 			this.status = {
 				state: 'ready',
@@ -100,11 +105,13 @@ class SelfUpdaterClass extends Observable<SelfUpdaterStatus> {
 	triggerInstall() {
 		if (this._value.state !== 'ready') {
 			Logger.warn(
-				`[selfUpdater] triggerInstall called in state ${this._value.state} — ignoring`
+				`[selfUpdater] triggerInstall called in state ${this._value.state}, ignoring`
 			);
 			return;
 		}
-		Logger.info('[selfUpdater] user clicked install — quitting + running installer');
+		Logger.info(
+			'[selfUpdater] user clicked install, quitting + running installer'
+		);
 		autoUpdater.quitAndInstall(false, true);
 	}
 }

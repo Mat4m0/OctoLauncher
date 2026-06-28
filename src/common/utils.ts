@@ -1,10 +1,19 @@
 type Path = readonly (string | number)[];
 
+// reject prototype-polluting keys
+const isUnsafeKey = (key: string | number) =>
+	key === '__proto__' || key === 'constructor' || key === 'prototype';
+
 export const nestedGet = <T>(object: unknown, path: Path) =>
-	path.reduce((obj, key) => obj?.[key], object) as T;
+	path.reduce(
+		(obj, key) => (isUnsafeKey(key) ? undefined : obj?.[key]),
+		object
+	) as T;
 
 export const nestedSet = (obj: any, path: Path, value: unknown) => {
 	const [key, ...rest] = path;
+	if (isUnsafeKey(key)) return;
+
 	if (path.length === 1) {
 		obj[key] = value;
 		return;

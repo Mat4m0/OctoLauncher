@@ -12,7 +12,8 @@ abstract class Observable<T> {
 			try {
 				l(v);
 				return true;
-			} catch {
+			} catch (err) {
+				console.error('Observer threw, removing listener', err);
 				return false;
 			}
 		});

@@ -6,6 +6,7 @@ import { api } from '~renderer/utils/api';
 import { ConfigWtfSchema } from '~common/schemas';
 import zodResolver from '~renderer/utils/zodResolver';
 import useScrollHint from '~renderer/utils/useScrollHint';
+import { useT } from '~renderer/i18n';
 
 import TextButton from '../styled/TextButton';
 import CheckboxInput from '../form/CheckboxInput';
@@ -64,6 +65,7 @@ const Item = ({
 };
 
 const TweaksTab = () => {
+	const t = useT();
 	const { data: pref } = api.preferences.get.useQuery();
 	const setPref = api.preferences.set.useMutation();
 
@@ -74,7 +76,10 @@ const TweaksTab = () => {
 		defaultValues: pref?.config ?? {},
 		resolver: zodResolver(ConfigWtfSchema)
 	});
-	const { handleSubmit, reset } = form;
+	const { handleSubmit, reset, formState } = form;
+
+	const isApplying =
+		setPref.isLoading || applyPatch.isLoading || verify.isLoading;
 
 	useEffect(() => {
 		pref && reset(pref.config);
@@ -100,33 +105,35 @@ const TweaksTab = () => {
 				<Item
 					form={form}
 					id="alwaysAutoLoot"
-					label="Always auto-loot"
-					text="Reverses auto-loot behavior to always auto-loot and disable auto-with bound key."
+					label={t('tweaks.alwaysAutoLoot.label')}
+					text={t('tweaks.alwaysAutoLoot.text')}
 				/>
 				<Item
 					form={form}
 					id="largeAddress"
-					label="Large Address Aware"
-					text="Allows the game to use more than 2GB of memory."
+					label={t('tweaks.largeAddress.label')}
+					text={t('tweaks.largeAddress.text')}
 					recommended
 				/>
 				<Item
 					form={form}
 					type="number"
 					id="nameplateRange"
-					label="Nameplate range"
-					text="Increases distance at which nameplates are visible. [Vanilla: 20] [Classic: 41]"
+					label={t('tweaks.nameplateRange.label')}
+					text={t('tweaks.nameplateRange.text')}
 					min={0}
 					max={41}
 				/>
 
-				<h4 className="tw-color col-span-3 mt-3">Camera</h4>
+				<h4 className="tw-color col-span-3 mt-3">
+					{t('tweaks.cameraHeading')}
+				</h4>
 				<Item
 					form={form}
 					id="fieldOfView"
-					label="Field of View"
+					label={t('tweaks.fieldOfView.label')}
 					type="number"
-					text="Recommended for widescreen window resolutions. [Vanilla: 90] [Tweaks: 110]"
+					text={t('tweaks.fieldOfView.text')}
 					min={90}
 					max={180}
 					step={5}
@@ -134,9 +141,9 @@ const TweaksTab = () => {
 				<Item
 					form={form}
 					id="farClip"
-					label="Render distance"
+					label={t('tweaks.farClip.label')}
 					type="number"
-					text="Increases maximum render distance. [Vanilla: 777] [Tweaks: 10000]"
+					text={t('tweaks.farClip.text')}
 					min={100}
 					max={10000}
 					sensitivity={3}
@@ -144,9 +151,9 @@ const TweaksTab = () => {
 				<Item
 					form={form}
 					id="frillDistance"
-					label="Ground clutter distance"
+					label={t('tweaks.frillDistance.label')}
 					type="number"
-					text="Changes ground clutter render distance. [Vanilla: 70] [Tweaks: 300]"
+					text={t('tweaks.frillDistance.text')}
 					min={0}
 					max={300}
 					sensitivity={0.3}
@@ -154,27 +161,41 @@ const TweaksTab = () => {
 				<Item
 					form={form}
 					id="cameraDistance"
-					label="Camera distance"
+					label={t('tweaks.cameraDistance.label')}
 					type="number"
-					text="Increases maximum camera (zoom out) distance. [Vanilla: 50] [Max:100]"
+					text={t('tweaks.cameraDistance.text')}
 					min={50}
 					max={100}
 				/>
 
-				<h4 className="tw-color col-span-3 mt-3">Sounds</h4>
+				<h4 className="tw-color col-span-3 mt-3">
+					{t('tweaks.soundsHeading')}
+				</h4>
 				<Item
 					form={form}
 					id="soundInBackground"
-					label="Background sounds"
-					text="Allows game sounds to play while the game is minimized."
+					label={t('tweaks.soundInBackground.label')}
+					text={t('tweaks.soundInBackground.text')}
 					recommended
 				/>
 			</div>
 			<hr />
 			<div className="-mb-4 -mt-3 flex items-center gap-2 py-2">
 				<p className="s1 flex-grow text-blueGray">
-					<span className="s1 text-warmGreen">Highlighted</span> options are
-					recommended and enabled by default
+					{applyPatch.isError ? (
+						<span className="text-orange">
+							{t('tweaks.applyFailed', {
+								message: applyPatch.error?.message ?? ''
+							})}
+						</span>
+					) : (
+						<>
+							<span className="s1 text-warmGreen">
+								{t('tweaks.highlighted')}
+							</span>{' '}
+							{t('tweaks.recommendedNote')}
+						</>
+					)}
 				</p>
 				<TextButton
 					onClick={async () => {
@@ -183,11 +204,13 @@ const TweaksTab = () => {
 						reset(config);
 					}}
 				>
-					Reset
+					{t('tweaks.reset')}
 				</TextButton>
-				<TextButton type="submit" className="text-green">
-					Apply
-				</TextButton>
+				{(formState.isDirty || isApplying) && (
+					<TextButton type="submit" loading={isApplying} className="text-green">
+						{t('tweaks.apply')}
+					</TextButton>
+				)}
 			</div>
 		</form>
 	);

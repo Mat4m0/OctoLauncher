@@ -107,9 +107,12 @@ const giteaProvider: Provider = {
 		stars: j.stars_count ?? undefined
 	}),
 	tocUrl: (o, r, ref, name) =>
-		`${GITEA_API}/repos/${o}/${r}/raw/${name}.toc?ref=${encodeURIComponent(ref)}`
+		`${GITEA_API}/repos/${o}/${r}/raw/${name}.toc?ref=${encodeURIComponent(
+			ref
+		)}`
 };
 
+// only allow known git hosts over https
 const parseGitUrl = (
 	git: string
 ): { owner: string; repo: string; provider: Provider } => {
@@ -158,8 +161,14 @@ const resolveOne = async (src: AddonSource): Promise<ResolvedAddon | null> => {
 		const candidates = src.ref
 			? [src.ref]
 			: src.branch
-				? [src.branch]
-				: [...new Set([meta?.defaultBranch, 'master', 'main'].filter((b): b is string => !!b))];
+			? [src.branch]
+			: [
+					...new Set(
+						[meta?.defaultBranch, 'main', 'master'].filter(
+							(b): b is string => !!b
+						)
+					)
+			  ];
 
 		let toc: TocData | undefined;
 		let resolvedRef: string | undefined;
@@ -222,26 +231,37 @@ const loadSources = async (): Promise<AddonSource[]> => {
 	if (!SOURCES_OVERRIDE_PATH) return defaultSources;
 	try {
 		if (await fs.pathExists(SOURCES_OVERRIDE_PATH)) {
-			const override = (await fs.readJSON(SOURCES_OVERRIDE_PATH)) as AddonSource[];
+			const override = (await fs.readJSON(
+				SOURCES_OVERRIDE_PATH
+			)) as AddonSource[];
 			if (Array.isArray(override) && override.length > 0) {
-				console.log(`Using addon sources override from ${SOURCES_OVERRIDE_PATH}`);
+				console.log(
+					`Using addon sources override from ${SOURCES_OVERRIDE_PATH}`
+				);
 				return override;
 			}
 		}
 	} catch (e) {
-		console.error(`Failed to read override at ${SOURCES_OVERRIDE_PATH}, using defaults:`, e);
+		console.error(
+			`Failed to read override at ${SOURCES_OVERRIDE_PATH}, using defaults:`,
+			e
+		);
 	}
 	return defaultSources;
 };
 
 const buildList = async (): Promise<ResolvedAddon[]> => {
 	const sources = await loadSources();
-	console.log(`Resolving metadata for ${sources.length} addons (concurrency=${FETCH_CONCURRENCY})...`);
+	console.log(
+		`Resolving metadata for ${sources.length} addons (concurrency=${FETCH_CONCURRENCY})...`
+	);
 	const t0 = Date.now();
 	const results = await poolMap(sources, FETCH_CONCURRENCY, resolveOne);
 	const ok = results.filter((r): r is ResolvedAddon => r !== null);
 	ok.sort((a, b) => a.name.localeCompare(b.name));
-	console.log(`Resolved ${ok.length}/${sources.length} addons in ${Date.now() - t0}ms`);
+	console.log(
+		`Resolved ${ok.length}/${sources.length} addons in ${Date.now() - t0}ms`
+	);
 	return ok;
 };
 

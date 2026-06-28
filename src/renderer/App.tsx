@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { api } from './utils/api';
 import PageBackground from './assets/background.png';
+import AntivirusModal from './components/AntivirusModal';
 import Header from './components/Header';
 import LaunchPanel from './components/LaunchPanel';
 import SelfUpdateBanner from './components/SelfUpdateBanner';
@@ -38,12 +39,13 @@ const App = () => {
 				</>
 			)}
 
-			{/* Launcher build label, anchored bottom-right.*/}
 			{appVersion && (
-				<span className="pointer-events-none absolute bottom-2 right-3 text-[10px] font-mono uppercase tracking-wider text-white/40 select-none">
+				<span className="pointer-events-none absolute bottom-2 right-3 select-none font-mono text-[10px] uppercase tracking-wider text-white/40">
 					v{appVersion}
 				</span>
 			)}
+
+			<AntivirusModal />
 		</div>
 	);
 };

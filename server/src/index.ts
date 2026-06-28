@@ -5,7 +5,7 @@ import fs from 'fs-extra';
 import { buildCache, type BuildProgress } from './cache.js';
 import { getAddons, warmUp as warmUpAddons } from './addons-resolver.js';
 
-const SourceDir = process.env.SOURCE_DIR || 'C:\\WoW\\TurtleFresh';
+const SourceDir = process.env.SOURCE_DIR || './client';
 
 const app = express();
 const port = 5000;
@@ -62,8 +62,7 @@ app.get('/api/file/:version/manifest.json', async (_req, res) => {
 		return;
 	}
 
-	void ensureManifestBuilt().catch(() => {
-	});
+	void ensureManifestBuilt().catch(() => {});
 	res.setHeader('Retry-After', '5');
 	res.status(503).json({
 		error: 'manifest_building',
@@ -80,7 +79,15 @@ app.get(
 		const filePath = req.params[0];
 		console.log(`Fetching file: ${filePath}`);
 
-		res.sendFile(path.join(SourceDir, filePath));
+		// keep the resolved path inside SourceDir
+		const root = path.resolve(SourceDir);
+		const target = path.resolve(SourceDir, filePath);
+		if (target !== root && !target.startsWith(root + path.sep)) {
+			res.status(403).end();
+			return;
+		}
+
+		res.sendFile(target);
 	}
 );
 
@@ -140,13 +147,15 @@ app.listen(port, () => {
 			const newest = await newestSourceMtime(SourceDir);
 			if (newest > manifestStat.mtimeMs) {
 				console.log(
-					`Manifest is stale (newest source mtime ${new Date(newest).toISOString()} > manifest ${new Date(manifestStat.mtimeMs).toISOString()}); rebuilding in background.`
+					`Manifest is stale (newest source mtime ${new Date(
+						newest
+					).toISOString()} > manifest ${new Date(
+						manifestStat.mtimeMs
+					).toISOString()}); rebuilding in background.`
 				);
 				ensureManifestBuilt()
 					.then(() => console.log('Background manifest rebuild complete.'))
-					.catch(e =>
-						console.error('Background manifest rebuild failed:', e)
-					);
+					.catch(e => console.error('Background manifest rebuild failed:', e));
 			} else {
 				console.log(
 					`Manifest cache already on disk at ${manifestPath} and up to date; no rebuild needed.`

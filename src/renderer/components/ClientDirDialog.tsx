@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { PreferencesSchema } from '~common/schemas';
 import zodResolver from '~renderer/utils/zodResolver';
 import { api } from '~renderer/utils/api';
+import { useT } from '~renderer/i18n';
 
 import TextButton from './styled/TextButton';
 import FilePickerInput from './form/FilePickerInput';
@@ -12,6 +13,7 @@ import CloseButton from './styled/CloseButton';
 type Props = { close: () => void };
 
 const ClientDirDialog = ({ close }: Props) => {
+	const t = useT();
 	const { data: pref } = api.preferences.get.useQuery();
 	const setPref = api.preferences.set.useMutation();
 	const isValidClientDir = api.preferences.isValidClientDir.useQuery(
@@ -42,16 +44,14 @@ const ClientDirDialog = ({ close }: Props) => {
 		return (
 			<form className="tw-dialog">
 				<CloseButton close={close} />
-				<h2 className="color mb-2 text-xl">Install location</h2>
-				<p>
-					You are using the portable version of the launcher. Install location
-					is determined by the location of the launcher executable.
-				</p>
+				<h2 className="color mb-2 text-xl">
+					{t('prefs.installLocationTitle')}
+				</h2>
+				<p>{t('prefs.portableInfo')}</p>
 				{!isValidClientDir.isLoading && !isValidClientDir.data && (
 					<p>
-						<span className="text-secondary">Error: </span>
-						WoW.exe not found in current folder. Please close the launcher and
-						move it to your WoW 1.12 client directory.
+						<span className="text-secondary">{t('prefs.errorLabel')}</span>
+						{t('prefs.wowExeNotFound', { exe: 'WoW.exe' })}
 					</p>
 				)}
 			</form>
@@ -64,7 +64,7 @@ const ClientDirDialog = ({ close }: Props) => {
 			onSubmit={handleSubmit(async ({ clientDir }) => {
 				try {
 					await setPref.mutateAsync({ clientDir });
-					verify.mutateAsync();
+					verify.mutate();
 					close();
 				} catch (e) {
 					setError('clientDir', {
@@ -79,18 +79,13 @@ const ClientDirDialog = ({ close }: Props) => {
 					close();
 				}}
 			/>
-			<h3 className="tw-color">Install location</h3>
+			<h3 className="tw-color">{t('prefs.installLocationTitle')}</h3>
 			<hr />
 
-			<p className="text-blueGray">
-				Select a directory for the game client installation.
-			</p>
-			<p className="text-blueGray">
-				You may also choose a directory with an existing Turtle WoW or Vanilla
-				WoW installation, and it will be automatically upgraded.
-			</p>
+			<p className="text-blueGray">{t('prefs.selectDirectory')}</p>
+			<p className="text-blueGray">{t('prefs.upgradeExisting')}</p>
 			<div className="flex items-center gap-3">
-				<label htmlFor="clientDir">Install directory:</label>
+				<label htmlFor="clientDir">{t('prefs.installDirectory')}</label>
 				<FilePickerInput
 					{...register('clientDir')}
 					title={watch('clientDir') ?? undefined}
@@ -115,7 +110,7 @@ const ClientDirDialog = ({ close }: Props) => {
 				loading={formState.isSubmitting}
 				className="self-end text-green"
 			>
-				Confirm
+				{t('prefs.confirm')}
 			</TextButton>
 		</form>
 	);

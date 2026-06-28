@@ -5,6 +5,7 @@ import { type AddonData, type AddonsStatus } from '~main/types';
 import { api } from '~renderer/utils/api';
 import TextButton from '~renderer/components/styled/TextButton';
 import useScrollHint from '~renderer/utils/useScrollHint';
+import { useT } from '~renderer/i18n';
 
 import DialogButton from '../styled/DialogButton';
 import IconSpinner from '../styled/IconSpinner';
@@ -12,6 +13,17 @@ import IconSpinner from '../styled/IconSpinner';
 import AddonList from './addons/AddonList';
 import { type Dependencies } from './addons/AddonListItem';
 import CustomAddonDialog from './addons/CustomAddonDialog';
+
+const RECOMMENDED = new Set([
+	'AtlasLoot',
+	'pfExtend',
+	'pfQuest',
+	'pfQuest-turtle',
+	'SellValue',
+	'ShaguTweaks',
+	'ShaguTweaks-extras',
+	'TurtleMail'
+]);
 
 const localeFilter = (l: AddonData[], filter: string) => {
 	const seen = new Set<string>();
@@ -21,14 +33,14 @@ const localeFilter = (l: AddonData[], filter: string) => {
 		return true;
 	});
 	return deduped
-		.filter(
-			a =>
-				a.folder.toLocaleLowerCase().indexOf(filter.toLocaleLowerCase()) !== -1
+		.filter(a =>
+			a.folder.toLocaleLowerCase().includes(filter.toLocaleLowerCase())
 		)
 		.sort((a, b) => a.folder.localeCompare(b.folder));
 };
 
 const AddonsTab = () => {
+	const t = useT();
 	const [data, setData] = useState<AddonsStatus>({
 		state: 'verifying',
 		addons: {},
@@ -61,14 +73,26 @@ const AddonsTab = () => {
 				className="relative -m-4 -mb-3 flex flex-grow flex-col gap-3 overflow-y-auto overflow-x-hidden p-4 pb-3"
 			>
 				<AddonList
-					title="Installed"
+					title={t('addons.sectionInstalled')}
 					addons={localeFilter(Object.values(data.addons), filter)}
 					dependencies={dependencies}
 				/>
 				<AddonList
-					title="Available"
+					title={t('addons.sectionRecommended')}
 					addons={localeFilter(
-						data.available.filter(a => !(a.folder in data.addons)),
+						data.available.filter(
+							a => !(a.folder in data.addons) && RECOMMENDED.has(a.folder)
+						),
+						filter
+					)}
+					dependencies={dependencies}
+				/>
+				<AddonList
+					title={t('addons.sectionAvailable')}
+					addons={localeFilter(
+						data.available.filter(
+							a => !(a.folder in data.addons) && !RECOMMENDED.has(a.folder)
+						),
 						filter
 					)}
 					dependencies={dependencies}
@@ -83,7 +107,7 @@ const AddonsTab = () => {
 					size={18}
 					loading={data.state !== 'done'}
 				>
-					Check for updates
+					{t('addons.checkForUpdates')}
 				</TextButton>
 				<DialogButton
 					clickAway
@@ -96,7 +120,7 @@ const AddonsTab = () => {
 							onClick={open}
 							className="s1 text-pink"
 						>
-							Add custom git addon
+							{t('addons.addCustomGitAddon')}
 						</TextButton>
 					)}
 				</DialogButton>
@@ -107,11 +131,11 @@ const AddonsTab = () => {
 						onClick={() => update.mutateAsync({})}
 						className="justify-self-end text-warmGreen"
 					>
-						Update all
+						{t('addons.updateAll')}
 					</TextButton>
 				) : (
 					<p className="s1 justify-self-end text-blueGray">
-						Everything is up to date.
+						{t('addons.everythingUpToDate')}
 					</p>
 				)}
 			</div>

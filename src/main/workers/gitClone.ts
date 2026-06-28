@@ -9,15 +9,27 @@ if (!port) throw new Error('IllegalState');
 
 const { dir, url, ref } = workerData;
 
-fs.removeSync(dir);
-git
-	.clone({
-		dir,
+const tmpDir = `${dir}.tmp`;
+
+const run = async () => {
+	await fs.remove(tmpDir);
+	await git.clone({
+		dir: tmpDir,
 		fs,
 		http,
 		url,
 		ref,
 		singleBranch: !ref || ref === 'master' || ref === 'main',
 		onProgress: (...args) => port.postMessage({ cb: 'onProgress', args })
-	})
-	.then(() => port.postMessage(true));
+	});
+
+	await fs.remove(dir);
+	await fs.move(tmpDir, dir);
+};
+
+run()
+	.then(() => port.postMessage(true))
+	.catch(async err => {
+		await fs.remove(tmpDir).catch(() => undefined);
+		throw err;
+	});

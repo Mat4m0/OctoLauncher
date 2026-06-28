@@ -25,6 +25,16 @@ body {
 	height: 100vh;
 }
 
+body {
+	-webkit-user-select: text;
+	user-select: text;
+}
+
+::selection {
+	background: rgb(248 156 66 / 0.45);
+	color: #fff;
+}
+
 #root {
 	position: relative;
 	width: 100%;

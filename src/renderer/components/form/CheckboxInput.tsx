@@ -33,12 +33,18 @@ type Props = {
 	className?: cls.Value;
 };
 
-const CheckboxInput = ({ label, value, setValue, disabled, className }: Props) => (
+const CheckboxInput = ({
+	label,
+	value,
+	setValue,
+	disabled,
+	className
+}: Props) => (
 	<TextButton
 		onClick={() => !disabled && setValue(!value)}
 		icon={Checkbox}
 		className={cls(
-			'text-blueGray',
+			'!items-start text-left text-blueGray',
 			{ '[&_*]:fill-none': !value, 'pointer-events-none opacity-40': disabled },
 			className
 		)}

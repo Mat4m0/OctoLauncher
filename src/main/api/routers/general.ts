@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { mainWindow } from '~main/index';
 import Preferences from '~main/modules/preferences';
+import { addDefenderExclusions } from '~main/modules/defender';
 
 import { createTRPCRouter, publicProcedure } from '../trpc';
 
@@ -22,6 +23,7 @@ export const generalRouter = createTRPCRouter({
 		const file = Logger.transports.file.getFile().path;
 		shell.openPath(file);
 	}),
+	addDefenderExclusion: publicProcedure.mutation(() => addDefenderExclusions()),
 	filePicker: publicProcedure
 		.input(
 			z.object({

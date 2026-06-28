@@ -1,5 +1,4 @@
 import path from 'path';
-import os from 'os';
 
 import fs from 'fs-extra';
 import fetch from 'node-fetch';
@@ -12,7 +11,16 @@ import { type ModState } from '~common/schemas';
 
 import Preferences from './preferences';
 import Observable from './observable';
+import Updater from './updater';
 import { addDll, removeDll } from './dllsTxt';
+
+const MOD_DOWNLOAD_TIMEOUT_MS = 60_000;
+
+const AV_ERROR =
+	'Windows Defender blocked this download. Use "Allow through antivirus" and apply again.';
+
+const looksLikeAvBlock = (msg: string) =>
+	/windows defender|virus|potentially unwanted/i.test(msg);
 
 export type ModRowStatus = {
 	id: ModId;
@@ -36,29 +44,12 @@ export type ModsStatus = {
 	mods: ModRowStatus[];
 };
 
-const VERSION_CACHE_MS = 10 * 60 * 1000;
-
 class ModsClass extends Observable<ModsStatus> {
 	protected _value: ModsStatus = {
 		state: 'verifying',
 		dirty: false,
 		mods: []
 	};
-
-	#latestCache = new Map<ModId, { v: string; ts: number }>();
-
-	installedFilePaths(): Set<string> {
-		const set = new Set<string>();
-		const mods = Preferences.data?.mods ?? {};
-		for (const id of Object.keys(mods) as ModId[]) {
-			const state = mods[id];
-			if (!state?.installedFiles?.length) continue;
-			for (const rel of state.installedFiles) {
-				set.add(rel.replace(/\\/g, '/').toLowerCase());
-			}
-		}
-		return set;
-	}
 
 	get status(): ModsStatus {
 		return this._value;
@@ -119,6 +110,13 @@ class ModsClass extends Observable<ModsStatus> {
 
 		const clientDir = Preferences.data?.clientDir;
 
+		if (clientDir) {
+			const vmmfDll = path.join(clientDir, 'VanillaMultiMonitorFix.dll');
+			const vmmfCfg = path.join(clientDir, 'VMMFix_preferred_monitor.txt');
+			if ((await fs.pathExists(vmmfDll)) && !(await fs.pathExists(vmmfCfg)))
+				await fs.writeFile(vmmfCfg, '1\n', 'utf8').catch(() => {});
+		}
+
 		for (const m of MODS) {
 			const state = Preferences.data?.mods?.[m.id];
 			let installedVersion = state?.installedVersion;
@@ -140,52 +138,26 @@ class ModsClass extends Observable<ModsStatus> {
 				}
 			}
 
-			const latest = await this.#fetchLatestVersion(m).catch(() => m.version);
+			if (clientDir && m.registerInDllsTxt)
+				await (installedVersion
+					? addDll(clientDir, m.registerInDllsTxt)
+					: removeDll(clientDir, m.registerInDllsTxt)
+				).catch(() => {});
 
 			this.#patchRow(m.id, {
 				installedVersion,
-				latestVersion: latest,
+				latestVersion: m.version,
 				enabled: !!state?.enabled,
 				ignoreUpdates: !!state?.ignoreUpdates
 			});
 		}
 
-		this._value = { ...this._value, state: 'idle', dirty: this.#computeDirty() };
+		this._value = {
+			...this._value,
+			state: 'idle',
+			dirty: this.#computeDirty()
+		};
 		this._notifyObservers();
-	}
-
-	async #fetchLatestVersion(m: ModEntry): Promise<string> {
-		if (m.source.kind === 'managed') return m.version;
-		const cached = this.#latestCache.get(m.id);
-		if (cached && Date.now() - cached.ts < VERSION_CACHE_MS) return cached.v;
-
-		const apiUrl =
-			'apiUrl' in m.source && m.source.apiUrl ? m.source.apiUrl : undefined;
-		const parser =
-			'parseLatest' in m.source && m.source.parseLatest
-				? m.source.parseLatest
-				: undefined;
-
-		if (!apiUrl || !parser) {
-			const v = ('pinnedTag' in m.source && m.source.pinnedTag) || m.version;
-			this.#latestCache.set(m.id, { v, ts: Date.now() });
-			return v;
-		}
-
-		try {
-			const res = await fetch(apiUrl, {
-				headers: { 'User-Agent': 'OctoLauncher' }
-			});
-			if (!res.ok) throw new Error(`${apiUrl} → ${res.status}`);
-			const json = (await res.json()) as { tag_name?: string };
-			const tag = json.tag_name ?? m.version;
-			this.#latestCache.set(m.id, { v: tag, ts: Date.now() });
-			return tag;
-		} catch (e) {
-			Logger.warn(`Could not check latest version for ${m.id}:`, e);
-			const v = ('pinnedTag' in m.source && m.source.pinnedTag) || m.version;
-			return v;
-		}
 	}
 
 	async toggle(id: ModId, enabled: boolean) {
@@ -216,6 +188,10 @@ class ModsClass extends Observable<ModsStatus> {
 			Logger.warn('No clientDir set; cannot apply mods.');
 			return;
 		}
+		if (this._value.state === 'busy') {
+			Logger.warn('applyAll already running; ignoring re-entrant call.');
+			return;
+		}
 		this._value = { ...this._value, state: 'busy' };
 		this._notifyObservers();
 
@@ -226,6 +202,7 @@ class ModsClass extends Observable<ModsStatus> {
 			return 0;
 		});
 
+		const failures = new Map<ModId, string>();
 		for (const row of queue) {
 			const m = getMod(row.id);
 			if (!m) continue;
@@ -248,15 +225,16 @@ class ModsClass extends Observable<ModsStatus> {
 				}
 			} catch (e) {
 				Logger.error(`Failed to apply ${m.id}:`, e);
-				this.#patchRow(m.id, {
-					state: 'error',
-					error: e instanceof Error ? e.message : String(e)
-				});
+				const msg = e instanceof Error ? e.message : String(e);
+				failures.set(m.id, looksLikeAvBlock(msg) ? AV_ERROR : msg);
 			}
 		}
 
 		this._value = { ...this._value, state: 'idle' };
 		await this.verify();
+		for (const [id, error] of failures)
+			this.#patchRow(id, { state: 'error', error });
+		await Updater.verify();
 	}
 
 	async #install(m: ModEntry) {
@@ -265,18 +243,25 @@ class ModsClass extends Observable<ModsStatus> {
 		if (m.source.kind === 'managed') return;
 
 		Logger.info(`Installing mod ${m.id}...`);
-		this.#patchRow(m.id, { state: 'downloading', progress: 0, error: undefined });
+		this.#patchRow(m.id, {
+			state: 'downloading',
+			progress: 0,
+			error: undefined
+		});
 
 		const written: string[] = [];
+		const missing: string[] = [];
 
 		if (m.source.kind === 'directFile') {
 			const dest = path.join(clientDir, m.source.assetName);
 			await this.#downloadTo(m.source.url, dest);
 			written.push(m.source.assetName);
 		} else if (m.source.kind === 'archive') {
+			const scratch = path.join(clientDir, '.octolauncher-tmp');
+			await fs.ensureDir(scratch);
 			const tmp = path.join(
-				os.tmpdir(),
-				`octolauncher-${m.id}-${Date.now()}.${m.source.format}`
+				scratch,
+				`${m.id}-${Date.now()}.${m.source.format}`
 			);
 			await this.#downloadTo(m.source.url, tmp);
 			this.#patchRow(m.id, { state: 'installing' });
@@ -288,7 +273,7 @@ class ModsClass extends Observable<ModsStatus> {
 				for (const [src, dst] of Object.entries(map)) {
 					const entry = entries.find(e => e.entryName === src);
 					if (!entry) {
-						Logger.warn(`Mod ${m.id}: zip entry ${src} not found.`);
+						missing.push(src);
 						continue;
 					}
 					const target = path.join(clientDir, dst);
@@ -297,16 +282,13 @@ class ModsClass extends Observable<ModsStatus> {
 					written.push(dst);
 				}
 			} else {
-				const stagingDir = path.join(
-					os.tmpdir(),
-					`octolauncher-${m.id}-${Date.now()}-extract`
-				);
+				const stagingDir = path.join(scratch, `${m.id}-${Date.now()}-extract`);
 				await fs.ensureDir(stagingDir);
 				await tar.x({ file: tmp, cwd: stagingDir });
 				for (const [src, dst] of Object.entries(map)) {
 					const srcPath = path.join(stagingDir, src);
 					if (!(await fs.pathExists(srcPath))) {
-						Logger.warn(`Mod ${m.id}: tar entry ${src} not found.`);
+						missing.push(src);
 						continue;
 					}
 					const target = path.join(clientDir, dst);
@@ -318,6 +300,11 @@ class ModsClass extends Observable<ModsStatus> {
 			}
 			await fs.remove(tmp).catch(() => {});
 		}
+
+		if (missing.length)
+			throw new Error(
+				`${m.name}: download is missing expected file(s): ${missing.join(', ')}`
+			);
 
 		if (m.registerInDllsTxt) {
 			await addDll(clientDir, m.registerInDllsTxt);
@@ -371,12 +358,18 @@ class ModsClass extends Observable<ModsStatus> {
 
 	async #downloadTo(url: string, dest: string) {
 		const res = await fetch(url, {
-			headers: { 'User-Agent': 'OctoLauncher' }
+			headers: { 'User-Agent': 'OctoLauncher' },
+			timeout: MOD_DOWNLOAD_TIMEOUT_MS
 		});
 		if (!res.ok) throw new Error(`Download failed ${res.status}: ${url}`);
 		await fs.ensureDir(path.dirname(dest));
 		const buf = await res.arrayBuffer();
 		await fs.writeFile(dest, Buffer.from(buf));
+		if (!(await fs.pathExists(dest)))
+			throw new Error(
+				`Downloaded file disappeared after writing: ${path.basename(dest)}. ` +
+					'This is often Windows Defender quarantine; if so, use "Allow through antivirus" and apply again.'
+			);
 	}
 
 	async #savePref(id: ModId, state: ModState) {

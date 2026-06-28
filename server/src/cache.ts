@@ -25,8 +25,7 @@ const skipFiles = new Set([
 ]);
 
 const skipPatterns: RegExp[] = [/\.bak(\.|$)/, /\.crashing(\.|$)/];
-const isSkipPattern = (file: string) =>
-	skipPatterns.some(p => p.test(file));
+const isSkipPattern = (file: string) => skipPatterns.some(p => p.test(file));
 
 const skipDirsPosix = new Set([
 	'Interface/GlueXML',
@@ -66,7 +65,9 @@ export type BuildProgress = {
 	error: string | null;
 };
 
-export type ProgressCallback = (p: Pick<BuildProgress, 'done' | 'total' | 'currentFile'>) => void;
+export type ProgressCallback = (
+	p: Pick<BuildProgress, 'done' | 'total' | 'currentFile'>
+) => void;
 
 const getHash = (...filePath: string[]): Promise<string> =>
 	new Promise((resolve, reject) => {
@@ -77,7 +78,10 @@ const getHash = (...filePath: string[]): Promise<string> =>
 		stream.on('end', () => resolve(hash.digest('hex').toLocaleUpperCase()));
 	});
 
-const countFiles = async (clientPath: string, ...filePath: string[]): Promise<number> => {
+const countFiles = async (
+	clientPath: string,
+	...filePath: string[]
+): Promise<number> => {
 	let total = 0;
 	const dir = path.join(clientPath, ...filePath);
 	const files = await fs.readdir(dir);
@@ -118,8 +122,9 @@ export const buildCache = async (
 			if (node.type === 'dir' || node.type === 'mpq') {
 				const newPrefix = node.name ? [...prefix, node.name] : prefix;
 				if (node.type === 'mpq') {
-					const mpqKey = [...newPrefix.slice(0, -1), node.name + '.mpq']
-						.join('/');
+					const mpqKey = [...newPrefix.slice(0, -1), node.name + '.mpq'].join(
+						'/'
+					);
 					prevHashByPath.set(mpqKey, node.hash);
 					prevSizeByPath.set(mpqKey, node.size);
 				}
@@ -237,12 +242,7 @@ export const buildCache = async (
 			tree.push({
 				type: 'file',
 				name: file,
-				hash: await getHashCached(
-					fullPath,
-					stats.mtimeMs,
-					...filePath,
-					file
-				),
+				hash: await getHashCached(fullPath, stats.mtimeMs, ...filePath, file),
 				version: allowModified ? stats.mtimeMs : undefined,
 				size: stats.size,
 				tags: tags.length ? tags : undefined
@@ -307,7 +307,7 @@ export const buildCache = async (
 		}
 	} catch (e) {
 		console.warn(
-			`manifest-overrides: failed to apply ${overridesPath} -- continuing ` +
+			`manifest-overrides: failed to apply ${overridesPath}, continuing` +
 				`without overrides (${(e as Error).message})`
 		);
 	}

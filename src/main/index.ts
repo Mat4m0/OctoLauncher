@@ -1,6 +1,6 @@
 import { join } from 'path';
 
-import { app, shell, BrowserWindow } from 'electron';
+import { app, shell, BrowserWindow, screen } from 'electron';
 import { electronApp, optimizer, is } from '@electron-toolkit/utils';
 import { createIPCHandler } from 'electron-trpc/main';
 import Logger from 'electron-log/main';
@@ -22,10 +22,33 @@ app.disableHardwareAcceleration();
 
 export let mainWindow: BrowserWindow | null = null;
 
+const isOnScreen = (
+	pos?: {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	} | null
+) => {
+	if (!pos) return false;
+	return screen.getAllDisplays().some(d => {
+		const a = d.workArea;
+		return (
+			pos.x < a.x + a.width &&
+			pos.x + pos.width > a.x &&
+			pos.y < a.y + a.height &&
+			pos.y + pos.height > a.y
+		);
+	});
+};
+
 const createWindow = async () => {
-	const position = Preferences.data.rememberPosition
-		? Preferences.data.windowPosition
-		: { width: 1000, height: 700 };
+	const saved =
+		Preferences.data.rememberPosition &&
+		isOnScreen(Preferences.data.windowPosition)
+			? Preferences.data.windowPosition
+			: undefined;
+	const position = saved ?? { width: 1000, height: 700 };
 
 	mainWindow = new BrowserWindow({
 		...position,
@@ -50,16 +73,22 @@ const createWindow = async () => {
 		Logger.error('Renderer unresponsive');
 	});
 
-	mainWindow.webContents.on('console-message', (_e, level, message, line, sourceId) => {
-		const lvl = level === 3 ? 'error' : level === 2 ? 'warn' : 'info';
-		Logger[lvl](`[renderer:${lvl}] ${message} (${sourceId}:${line})`);
-	});
+	mainWindow.webContents.on(
+		'console-message',
+		(_e, level, message, line, sourceId) => {
+			const lvl = level === 3 ? 'error' : level === 2 ? 'warn' : 'info';
+			Logger[lvl](`[renderer:${lvl}] ${message} (${sourceId}:${line})`);
+		}
+	);
 
 	mainWindow.webContents.on('before-input-event', (_e, input) => {
 		if (input.type !== 'keyDown') return;
 		if (input.key === 'F12') {
 			mainWindow?.webContents.toggleDevTools();
+			return;
 		}
+		if ((input.control || input.meta) && input.key.toLowerCase() === 'c')
+			mainWindow?.webContents.copy();
 	});
 
 	createIPCHandler({ router: appRouter, windows: [mainWindow] });
@@ -77,7 +106,7 @@ const createWindow = async () => {
 		const [width = 0, height = 0] = mainWindow.getSize();
 		Preferences.data = { windowPosition: { x, y, width, height } };
 	});
-	
+
 	if (is.dev && process.env.ELECTRON_RENDERER_URL) {
 		mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
 	} else {
@@ -85,23 +114,36 @@ const createWindow = async () => {
 	}
 };
 
-app.whenReady().then(async () => {
-	Preferences.data = await Preferences.load();
+const gotSingleInstanceLock = is.dev || app.requestSingleInstanceLock();
 
-	Addons.verify();
-	Updater.verify();
-	Mods.verify();
-	initSelfUpdater();
-
-	electronApp.setAppUserModelId('com.electron');
-
-	app.on('browser-window-created', (_, window) => {
-		optimizer.watchWindowShortcuts(window);
+if (!gotSingleInstanceLock) {
+	app.quit();
+} else {
+	app.on('second-instance', () => {
+		if (!mainWindow) return;
+		if (mainWindow.isMinimized()) mainWindow.restore();
+		if (!mainWindow.isVisible()) mainWindow.show();
+		mainWindow.focus();
 	});
 
-	await createWindow();
-});
+	app.whenReady().then(async () => {
+		Preferences.data = await Preferences.load();
 
-app.on('window-all-closed', async () => {
-	app.quit();
-});
+		Addons.verify();
+		Updater.verify();
+		Mods.verify();
+		initSelfUpdater();
+
+		electronApp.setAppUserModelId('st.octowow.launcher');
+
+		app.on('browser-window-created', (_, window) => {
+			optimizer.watchWindowShortcuts(window);
+		});
+
+		await createWindow();
+	});
+
+	app.on('window-all-closed', () => {
+		app.quit();
+	});
+}

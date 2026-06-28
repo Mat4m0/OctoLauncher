@@ -5,6 +5,7 @@ import CloseButton from '~renderer/components/styled/CloseButton';
 import IconSpinner from '~renderer/components/styled/IconSpinner';
 import TextButton from '~renderer/components/styled/TextButton';
 import { api } from '~renderer/utils/api';
+import { useT } from '~renderer/i18n';
 
 const useDebounced = (value: string, delay: number) => {
 	const [debouncedValue, setDebouncedValue] = useState(value);
@@ -17,6 +18,7 @@ const useDebounced = (value: string, delay: number) => {
 };
 
 const CustomAddonDialog = ({ close }: { close: () => void }) => {
+	const t = useT();
 	const [url, setUrl] = useState('');
 	const debouncedUrl = useDebounced(url, 500);
 	const response = api.addons.checkGitUrl.useQuery(debouncedUrl, {
@@ -27,10 +29,14 @@ const CustomAddonDialog = ({ close }: { close: () => void }) => {
 	return (
 		<div className="tw-dialog">
 			<CloseButton close={close} />
-			<h3 className="tw-color">Install addon</h3>
+			<h3 className="tw-color">{t('addons.installAddon')}</h3>
 			<hr />
 			{response.data ? (
-				<img src={response.data?.preview} alt="Preview" className="w-full" />
+				<img
+					src={response.data?.preview}
+					alt={t('addons.previewAlt')}
+					className="w-full"
+				/>
 			) : (
 				<div className="flex h-[191px] w-full items-center justify-center bg-darkPurple">
 					{response.isFetching && <IconSpinner />}
@@ -53,8 +59,8 @@ const CustomAddonDialog = ({ close }: { close: () => void }) => {
 			<div className="flex items-center justify-end gap-2">
 				<p className="s1 text-blueGray">
 					{response.data
-						? 'Ready to install'
-						: 'Not a valid git repository URL'}
+						? t('addons.readyToInstall')
+						: t('addons.invalidGitUrl')}
 				</p>
 				<TextButton
 					onClick={() => {
@@ -66,7 +72,7 @@ const CustomAddonDialog = ({ close }: { close: () => void }) => {
 					className={response.data ? 'text-warmGreen' : 'text-blueGray'}
 					disabled={!response.data || response.isLoading}
 				>
-					Install
+					{t('addons.install')}
 				</TextButton>
 			</div>
 		</div>

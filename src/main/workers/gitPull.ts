@@ -5,7 +5,7 @@ import http from 'isomorphic-git/http/node';
 import fs from 'fs-extra';
 
 const port = parentPort;
-if (!port) throw new Error('IllegalState');
+if (!port) throw new Error('gitPull worker has no parentPort');
 
 const { dir, remote, branch, ref } = workerData as {
 	dir: string;
@@ -17,20 +17,17 @@ const { dir, remote, branch, ref } = workerData as {
 const onProgress = (...args: unknown[]) =>
 	port.postMessage({ cb: 'onProgress', args });
 
-const removeUntrackedFiles = async () => {
-	const status = await git.statusMatrix({ fs, dir });
-	await Promise.all(
-		status
-			.filter(([, HEAD]) => HEAD === 0)
-			.map(([filepath]) => fs.remove(`${dir}/${filepath}`))
-	);
-};
-
 const run = async () => {
 	if (ref) {
-		await git.fetch({ fs, http, dir, tags: true, singleBranch: false, onProgress });
+		await git.fetch({
+			fs,
+			http,
+			dir,
+			tags: true,
+			singleBranch: false,
+			onProgress
+		});
 		await git.checkout({ fs, dir, force: true, ref, onProgress });
-		await removeUntrackedFiles();
 		return;
 	}
 
@@ -41,7 +38,6 @@ const run = async () => {
 		ref: `${remote}/${branch}`,
 		onProgress
 	});
-	await removeUntrackedFiles();
 	await git.pull({
 		fs,
 		http,
@@ -53,4 +49,8 @@ const run = async () => {
 	});
 };
 
-run().then(() => port.postMessage(true));
+run()
+	.then(() => port.postMessage(true))
+	.catch(err => {
+		throw err;
+	});

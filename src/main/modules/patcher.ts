@@ -22,17 +22,24 @@ const Servers = {
 	}
 } as const;
 
-type Tweak = { key: keyof PreferencesSchema['config']; default?: unknown; forced?: boolean } & (
-	| {
-			type: 'bytes';
-			tweaks: [number, number[]][];
-	  }
-	| {
-			type: 'int8' | 'uint16' | 'float';
-			offset: number;
-			value?: number;
-	  }
-);
+type TweakKey =
+	| { synthetic?: false; key: keyof PreferencesSchema['config'] }
+	| { synthetic: true; key: string };
+
+type Tweak = TweakKey & {
+	default?: unknown;
+	forced?: boolean;
+} & (
+		| {
+				type: 'bytes';
+				tweaks: [number, number[]][];
+		  }
+		| {
+				type: 'int8' | 'uint16' | 'float';
+				offset: number;
+				value?: number;
+		  }
+	);
 
 export const patchExecutable = async () => {
 	Logger.log('Patching WoW.exe...');
@@ -81,7 +88,8 @@ export const patchExecutable = async () => {
 			{ key: 'nameplateRange', type: 'float', offset: 0x40c448 },
 			{ key: 'cameraDistance', type: 'float', offset: 0x4089a4 },
 			{
-				key: 'crossFactionResurrect' as never,
+				synthetic: true,
+				key: 'crossFactionResurrect',
 				type: 'bytes',
 				default: true,
 				tweaks: [
@@ -89,8 +97,10 @@ export const patchExecutable = async () => {
 					[0x006e62a8, [0x006e62a9]]
 				]
 			},
+			// version-pinned in-place patch of the WoW.exe routine at this offset
 			{
-				key: 'skillUiGateHijack' as never,
+				synthetic: true,
+				key: 'skillUiGateHijack',
 				type: 'bytes',
 				default: true,
 				forced: true,
@@ -98,47 +108,41 @@ export const patchExecutable = async () => {
 					[
 						0x002ddf90,
 						[
-							0x55, 0x8b, 0xec, 0x83, 0xec, 0x08, 0x53, 0x56,
-							0x57, 0x8b, 0x3d, 0x60, 0xab, 0xce, 0x00, 0x83,
-							0xff, 0xff, 0x89, 0x55, 0xfc, 0x89, 0x4d, 0xf8,
-							0x74, 0x79, 0x8b, 0x75, 0x08, 0x8b, 0x15, 0x58,
-							0xab, 0xce, 0x00, 0x8b, 0xc7, 0x23, 0xc6, 0x8d,
-							0x04, 0x40, 0x8b, 0x4c, 0x82, 0x08, 0xf6, 0xc1,
-							0x01, 0x8d, 0x44, 0x82, 0x04, 0x75, 0x04, 0x85,
-							0xc9, 0x75, 0x05, 0x33, 0xc9, 0x8d, 0x49, 0x00,
-							0xf6, 0xc1, 0x01, 0x75, 0x4e, 0x85, 0xc9, 0x74,
-							0x4a, 0x39, 0x31, 0x74, 0x13, 0x8b, 0xc7, 0x23,
-							0xc6, 0x8d, 0x04, 0x40, 0x8d, 0x04, 0x82, 0x8b,
-							0x00, 0x03, 0xc1, 0x8b, 0x48, 0x04, 0xeb, 0xe0,
-							0x8b, 0x59, 0x1c, 0x8b, 0x71, 0x18, 0x33, 0xff,
-							0x85, 0xdb, 0x7e, 0x27, 0x8d, 0x64, 0x24, 0x00,
-							0x8b, 0x4e, 0x0c, 0x8b, 0x56, 0x08, 0x6a, 0x00,
-							0x6a, 0x00, 0x51, 0x8b, 0x4d, 0xf8, 0x52, 0x8b,
-							0x55, 0xfc, 0xe8, 0xb9, 0xfd, 0xff, 0xff, 0x84,
-							0xc0, 0x75, 0x13, 0x47, 0x83, 0xc6, 0x20, 0x3b,
-							0xfb, 0x7c, 0xdd, 0x5f, 0x5e, 0x33, 0xc0, 0x5b,
-							0x8b, 0xe5, 0x5d, 0xc2, 0x04, 0x00, 0x5f, 0x8b,
-							0xc6, 0x5e, 0x5b, 0x8b, 0xe5, 0x5d, 0xc2, 0x04,
-							0x00, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90
+							0x55, 0x8b, 0xec, 0x83, 0xec, 0x08, 0x53, 0x56, 0x57, 0x8b, 0x3d,
+							0x60, 0xab, 0xce, 0x00, 0x83, 0xff, 0xff, 0x89, 0x55, 0xfc, 0x89,
+							0x4d, 0xf8, 0x74, 0x79, 0x8b, 0x75, 0x08, 0x8b, 0x15, 0x58, 0xab,
+							0xce, 0x00, 0x8b, 0xc7, 0x23, 0xc6, 0x8d, 0x04, 0x40, 0x8b, 0x4c,
+							0x82, 0x08, 0xf6, 0xc1, 0x01, 0x8d, 0x44, 0x82, 0x04, 0x75, 0x04,
+							0x85, 0xc9, 0x75, 0x05, 0x33, 0xc9, 0x8d, 0x49, 0x00, 0xf6, 0xc1,
+							0x01, 0x75, 0x4e, 0x85, 0xc9, 0x74, 0x4a, 0x39, 0x31, 0x74, 0x13,
+							0x8b, 0xc7, 0x23, 0xc6, 0x8d, 0x04, 0x40, 0x8d, 0x04, 0x82, 0x8b,
+							0x00, 0x03, 0xc1, 0x8b, 0x48, 0x04, 0xeb, 0xe0, 0x8b, 0x59, 0x1c,
+							0x8b, 0x71, 0x18, 0x33, 0xff, 0x85, 0xdb, 0x7e, 0x27, 0x8d, 0x64,
+							0x24, 0x00, 0x8b, 0x4e, 0x0c, 0x8b, 0x56, 0x08, 0x6a, 0x00, 0x6a,
+							0x00, 0x51, 0x8b, 0x4d, 0xf8, 0x52, 0x8b, 0x55, 0xfc, 0xe8, 0xb9,
+							0xfd, 0xff, 0xff, 0x84, 0xc0, 0x75, 0x13, 0x47, 0x83, 0xc6, 0x20,
+							0x3b, 0xfb, 0x7c, 0xdd, 0x5f, 0x5e, 0x33, 0xc0, 0x5b, 0x8b, 0xe5,
+							0x5d, 0xc2, 0x04, 0x00, 0x5f, 0x8b, 0xc6, 0x5e, 0x5b, 0x8b, 0xe5,
+							0x5d, 0xc2, 0x04, 0x00, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90
 						]
 					]
 				]
 			}
 		] satisfies Tweak[];
 
-		// Apply patches
 		Tweaks.forEach(t => {
-			const val =
-				config[t.key] ?? t.default ?? ConfigWtfSchema.parse({})[t.key];
+			const val = t.synthetic
+				? t.default
+				: config[t.key] ?? t.default ?? ConfigWtfSchema.parse({})[t.key];
 
 			Logger.log(`Applying "${t.key}" patch with value: ${val}`);
 			if (t.type === 'float') {
-				buffer.writeFloatLE(t.value ?? (val as never), t.offset);
+				buffer.writeFloatLE(t.value ?? (val as number), t.offset);
 			} else if (t.type === 'int8') {
-				buffer.writeInt8(t.value ?? (val as never), t.offset);
+				buffer.writeInt8(t.value ?? (val as number), t.offset);
 			} else if (t.type === 'uint16') {
 				if (!t.forced && !val) return;
-				buffer.writeUInt16LE(t.value ?? (val as never), t.offset);
+				buffer.writeUInt16LE(t.value ?? (val as number), t.offset);
 			} else if (t.type === 'bytes') {
 				if (!t.forced && !val) return;
 				t.tweaks.forEach(([offset, bytes]) =>
@@ -151,11 +155,12 @@ export const patchExecutable = async () => {
 		Logger.log('WoW.exe successfully patched');
 	} catch (e) {
 		Logger.error('Failed to patch WoW.exe', e);
+		throw e instanceof Error ? e : new Error('Failed to patch WoW.exe');
 	}
 };
 
-export const patchConfig = async () => {
-	const { clientDir, server, config } = Preferences.data;
+export const patchConfig = async (forceTweaks = false) => {
+	const { clientDir, server, config, locale } = Preferences.data;
 	if (!clientDir) return;
 
 	const configPath = path.join(clientDir, 'WTF', 'Config.wtf');
@@ -163,14 +168,13 @@ export const patchConfig = async () => {
 	const raw = (await fs.pathExists(configPath))
 		? await fs.readFile(configPath, { encoding: 'utf-8' })
 		: '';
-	if (raw) await fs.remove(configPath);
 
 	const configWtf = Object.fromEntries(
 		raw
-			.split('\n')
+			.split(/\r?\n/)
 			.map(l => {
-				const [_, k, v] = l.match(/SET (\w+) "(.+)"/) ?? [];
-				return !k || !v ? undefined : [k, v];
+				const [, k, v] = l.match(/SET (\w+) "(.*)"/) ?? [];
+				return !k || v === undefined ? undefined : [k, v];
 			})
 			.filter(isNotUndef)
 	);
@@ -210,20 +214,24 @@ export const patchConfig = async () => {
 		gxMaximize: configWtf['gxMaximize'] ?? 1,
 		gxCursor: configWtf['gxCursor'] ?? 1,
 		checkAddonVersion: configWtf['checkAddonVersion'] ?? 0,
+		farClip: configWtf['farClip'] ?? config.farClip,
+		CameraDistanceMax: configWtf['CameraDistanceMax'] ?? config.cameraDistance,
 		...configWtf,
-		CameraDistanceMax: config.cameraDistance,
-		farClip: config.farClip,
+		locale,
 		realmList: Servers[server].realmList,
 		hwDetect: 0,
-		M2UseShaders: 1
+		M2UseShaders: 1,
+		...(forceTweaks
+			? { farClip: config.farClip, CameraDistanceMax: config.cameraDistance }
+			: {})
 	};
 
-	await fs.writeFile(
-		configPath,
-		Object.entries(parsed)
-			.filter(v => v[1] !== undefined && v[1] !== null)
-			.map(l => `SET ${l[0]} "${l[1]}"`)
-			.join('\n')
-	);
+	const body = Object.entries(parsed)
+		.filter(v => v[1] !== undefined && v[1] !== null)
+		.map(l => `SET ${l[0]} "${l[1]}"`)
+		.join('\n');
+	const tmpPath = `${configPath}.tmp`;
+	await fs.writeFile(tmpPath, body);
+	await fs.move(tmpPath, configPath, { overwrite: true });
 	Logger.log('Config.wtf successfully patched');
 };

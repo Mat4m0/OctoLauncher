@@ -15,8 +15,6 @@ export type ModSource =
 	| {
 			kind: 'directFile';
 			url: string;
-			versionUrl?: string;
-			latestVersionUrl?: string;
 			parseLatest?: 'githubRelease' | 'gitlabRelease' | 'codebergRelease';
 			apiUrl?: string;
 			pinnedTag?: string;
@@ -25,7 +23,6 @@ export type ModSource =
 	| {
 			kind: 'archive';
 			url: string;
-			latestVersionUrl?: string;
 			apiUrl?: string;
 			parseLatest?: 'githubRelease' | 'gitlabRelease' | 'codebergRelease';
 			pinnedTag?: string;
@@ -96,7 +93,8 @@ export const MODS: ModEntry[] = [
 			pinnedTag: '0.2',
 			format: 'zip',
 			extractMap: {
-				'VanillaMultiMonitorFix.dll': 'VanillaMultiMonitorFix.dll'
+				'VanillaMultiMonitorFix.dll': 'VanillaMultiMonitorFix.dll',
+				'VMMFix_preferred_monitor.txt': 'VMMFix_preferred_monitor.txt'
 			}
 		},
 		registerInDllsTxt: 'VanillaMultiMonitorFix.dll'
@@ -139,7 +137,8 @@ export const MODS: ModEntry[] = [
 		id: 'vanillaFixes',
 		name: 'vanillaFixes',
 		version: 'v1.5.3',
-		description: 'A client modification that eliminates stutter and animation lag.',
+		description:
+			'A client modification that eliminates stutter and animation lag.',
 		recommended: true,
 		repoUrl: 'https://github.com/hannesmann/vanillafixes',
 		source: {
@@ -160,7 +159,8 @@ export const MODS: ModEntry[] = [
 		id: 'vanillaHelpers',
 		name: 'vanillaHelpers',
 		version: 'v1.1.2',
-		description: 'Utility library that might be required by other patches and addons.',
+		description:
+			'Utility library that might be required by other patches and addons.',
 		repoUrl: 'https://github.com/isfir/VanillaHelpers',
 		requires: ['vanillaFixes'],
 		source: {

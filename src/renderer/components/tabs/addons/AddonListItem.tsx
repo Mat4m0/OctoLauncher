@@ -16,6 +16,7 @@ import IconSpinner from '~renderer/components/styled/IconSpinner';
 import DialogButton from '~renderer/components/styled/DialogButton';
 import { isNotUndef } from '~common/utils';
 import CloseButton from '~renderer/components/styled/CloseButton';
+import { useT } from '~renderer/i18n';
 
 import AddonDetail from './AddonDetail';
 
@@ -39,6 +40,7 @@ const toRepoUrl = (git?: string) =>
 	git ? git.replace(/\.git$/, '') : undefined;
 
 const AddonListItem = ({ row, dependencies, ...addon }: Props) => {
+	const t = useT();
 	const update = api.addons.update.useMutation();
 	const remove = api.addons.remove.useMutation();
 	const openLink = api.general.openLink.useMutation();
@@ -58,17 +60,21 @@ const AddonListItem = ({ row, dependencies, ...addon }: Props) => {
 	const warnings = [
 		addon.toc && addon.toc?.Interface !== '11200'
 			? {
-					full: `This addon seems to be made for different game version (${addon.toc?.Interface}) and it may not function correctly`,
-					short: 'Incorrect version'
+					full: t('addons.warnIncorrectVersionFull', {
+						version: addon.toc?.Interface ?? ''
+					}),
+					short: t('addons.warnIncorrectVersionShort')
 			  }
 			: undefined,
 		localDependencies.some(d => d.status !== 'installed' && !d.optional)
 			? {
-					full: `This addon has missing dependencies: ${localDependencies
-						.filter(d => d.status !== 'installed' && !d.optional)
-						.map(d => d.name)
-						.join(', ')}`,
-					short: 'Missing dependencies'
+					full: t('addons.warnMissingDependenciesFull', {
+						deps: localDependencies
+							.filter(d => d.status !== 'installed' && !d.optional)
+							.map(d => d.name)
+							.join(', ')
+					}),
+					short: t('addons.warnMissingDependenciesShort')
 			  }
 			: undefined
 	].filter(isNotUndef);
@@ -107,7 +113,7 @@ const AddonListItem = ({ row, dependencies, ...addon }: Props) => {
 									: HelpCircle
 							}
 							onClick={open}
-							title="Details"
+							title={t('addons.details')}
 							size={18}
 							className={cls(
 								'-mx-2',
@@ -132,7 +138,7 @@ const AddonListItem = ({ row, dependencies, ...addon }: Props) => {
 					<TextButton
 						icon={Github}
 						size={14}
-						title={`Open ${repoUrl} on GitHub`}
+						title={t('addons.openOnGithub', { url: repoUrl })}
 						onClick={() => openLink.mutateAsync(repoUrl)}
 						className="!p-1 text-blueGray/60 hocus:text-pink"
 					/>
@@ -162,9 +168,9 @@ const AddonListItem = ({ row, dependencies, ...addon }: Props) => {
 				) : (
 					<p className="s1 text-blueGray/50">
 						{addon.status === 'upToDate'
-							? 'Up to date'
+							? t('addons.upToDate')
 							: !addon.git
-							? 'Not versioned'
+							? t('addons.notVersioned')
 							: ''}
 					</p>
 				)}
@@ -173,17 +179,16 @@ const AddonListItem = ({ row, dependencies, ...addon }: Props) => {
 						onClick={() => update.mutateAsync({ toUpdate: [addon.folder] })}
 						className="s1 -mx-2 justify-self-end"
 					>
-						Update
+						{t('addons.update')}
 					</TextButton>
 				)}
 				{addon.status === 'available' ? (
 					<TextButton
-						// TODO: With dependencies checkbox
 						onClick={() => update.mutateAsync({ toUpdate: [addon.folder] })}
 						className="text-warmGreen"
 						icon={DownloadCloud}
 						size={18}
-						title="Download"
+						title={t('addons.download')}
 					/>
 				) : (
 					<DialogButton
@@ -191,14 +196,13 @@ const AddonListItem = ({ row, dependencies, ...addon }: Props) => {
 						dialog={close => (
 							<div className="tw-dialog">
 								<CloseButton close={close} />
-								<h4 className="tw-color">Are you sure?</h4>
+								<h4 className="tw-color">{t('addons.deleteConfirmTitle')}</h4>
 								<hr />
 								<p className="text-blueGray">
-									Are you sure you want to delete <span>{addon.folder}</span>{' '}
-									addon?
+									{t('addons.deleteConfirmBody', { folder: addon.folder })}
 								</p>
 								<p className="text-blueGray">
-									This will delete all files in the addon folder.
+									{t('addons.deleteConfirmFiles')}
 								</p>
 								<TextButton
 									icon={Trash2}
@@ -209,7 +213,7 @@ const AddonListItem = ({ row, dependencies, ...addon }: Props) => {
 									disabled={remove.isLoading}
 									className="self-end text-red"
 								>
-									Delete
+									{t('addons.delete')}
 								</TextButton>
 							</div>
 						)}
@@ -220,7 +224,7 @@ const AddonListItem = ({ row, dependencies, ...addon }: Props) => {
 								className="text-red/50"
 								icon={Trash2}
 								size={18}
-								title="Remove"
+								title={t('addons.remove')}
 							/>
 						)}
 					</DialogButton>

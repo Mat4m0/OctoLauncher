@@ -44,7 +44,12 @@ export const PreferencesSchema = z.object({
 	lastPatchedLauncherVersion: z.string().optional(),
 	expectedPatchedWowHash: z.string().optional(),
 	minimizeToTrayOnPlay: f.boolean(true),
-	cleanWdb: f.boolean(),
+	cleanWdb: f.boolean(true),
+	locale: z
+		.enum(['enUS', 'deDE', 'zhCN', 'esES', 'ptBR', 'ruRU'])
+		.default('enUS'),
+	localePatchLetter: z.string().optional(),
+	localePatchLocale: z.string().optional(),
 	rememberPosition: f.boolean(),
 	windowPosition: z
 		.object({

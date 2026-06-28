@@ -2,6 +2,8 @@ import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import log from 'electron-log/renderer';
 
+import { useT } from '~renderer/i18n';
+
 import TextButton from './styled/TextButton';
 
 type Props = {
@@ -12,6 +14,47 @@ type Props = {
 type State = {
 	error?: Error;
 	componentStack?: string;
+};
+
+type FallbackProps = {
+	tabName: string;
+	error: Error;
+	componentStack?: string;
+	onReset: () => void;
+};
+
+const TabErrorFallback = ({
+	tabName,
+	error,
+	componentStack,
+	onReset
+}: FallbackProps) => {
+	const t = useT();
+	return (
+		<div className="tw-surface flex min-h-0 flex-grow flex-col gap-3">
+			<div className="flex items-center gap-2">
+				<AlertTriangle size={22} className="text-red" />
+				<h4 className="text-red">{t('misc.tabCrashed', { tab: tabName })}</h4>
+			</div>
+			<hr />
+			<p className="text-white">
+				{error.name}: {error.message}
+			</p>
+			{componentStack && (
+				<pre className="s1 max-h-[200px] overflow-auto whitespace-pre-wrap text-blueGray">
+					{componentStack.trim()}
+				</pre>
+			)}
+			<hr />
+			<TextButton
+				icon={RefreshCw}
+				onClick={onReset}
+				className="self-end text-warmGreen"
+			>
+				{t('misc.tryAgain')}
+			</TextButton>
+		</div>
+	);
 };
 
 class TabErrorBoundary extends Component<Props, State> {
@@ -38,29 +81,12 @@ class TabErrorBoundary extends Component<Props, State> {
 		if (!this.state.error) return this.props.children;
 		const { error, componentStack } = this.state;
 		return (
-			<div className="tw-surface flex min-h-0 flex-grow flex-col gap-3">
-				<div className="flex items-center gap-2">
-					<AlertTriangle size={22} className="text-red" />
-					<h4 className="text-red">{this.props.tabName} crashed</h4>
-				</div>
-				<hr />
-				<p className="text-white">
-					{error.name}: {error.message}
-				</p>
-				{componentStack && (
-					<pre className="s1 max-h-[200px] overflow-auto whitespace-pre-wrap text-blueGray">
-						{componentStack.trim()}
-					</pre>
-				)}
-				<hr />
-				<TextButton
-					icon={RefreshCw}
-					onClick={this.#reset}
-					className="self-end text-warmGreen"
-				>
-					Try again
-				</TextButton>
-			</div>
+			<TabErrorFallback
+				tabName={this.props.tabName}
+				error={error}
+				componentStack={componentStack}
+				onReset={this.#reset}
+			/>
 		);
 	}
 }

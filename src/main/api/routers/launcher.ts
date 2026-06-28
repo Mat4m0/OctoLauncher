@@ -2,7 +2,6 @@ import path from 'path';
 import { spawn } from 'child_process';
 
 import fs from 'fs-extra';
-import { inject } from 'dll-inject';
 import Logger from 'electron-log/main';
 
 import Preferences from '~main/modules/preferences';
@@ -10,95 +9,101 @@ import Mods from '~main/modules/mods';
 import { mainWindow } from '~main/index';
 import { isGameRunning } from '~main/modules/updater';
 import { patchConfig } from '~main/modules/patcher';
+import { applyLocalePatch } from '~main/modules/localePatch';
 import { minimizeToTray, restoreFromTray } from '~main/modules/tray';
 import { getMod } from '~common/mods';
 
 import { createTRPCRouter, publicProcedure } from '../trpc';
 
-const ensureChainloaderTweak = async (clientDir: string): Promise<boolean> => {
-	if (Preferences.data.config.vanillaFixes) return true;
+const chainloaderNeeded = async (clientDir: string): Promise<boolean> => {
+	const installed = Mods.status.mods.filter(r => r.installedVersion);
+	if (installed.some(r => r.id === 'vanillaFixes')) return true;
+	if (installed.some(r => getMod(r.id)?.requires?.includes('vanillaFixes')))
+		return true;
 
-	const installedMods = Mods.status.mods.filter(r => r.installedVersion);
-	const anyDependsOnVf = installedMods.some(r =>
-		getMod(r.id)?.requires?.includes('vanillaFixes')
-	);
-
-	let dllsTxtHasEntries = false;
 	const dllsPath = path.join(clientDir, 'dlls.txt');
 	if (await fs.pathExists(dllsPath)) {
 		const raw = await fs.readFile(dllsPath, 'utf8');
-		dllsTxtHasEntries = raw
-			.split(/\r?\n/)
-			.some(l => l.trim() && !l.trim().startsWith('#'));
+		return raw.split(/\r?\n/).some(l => l.trim() && !l.trim().startsWith('#'));
 	}
-
-	if (!anyDependsOnVf && !dllsTxtHasEntries) return false;
-
-	Logger.info(
-		`Auto-enabling vanillaFixes Tweak (chainloader required): ${
-			anyDependsOnVf ? 'a dependent mod is installed' : ''
-		}${anyDependsOnVf && dllsTxtHasEntries ? ' + ' : ''}${
-			dllsTxtHasEntries ? 'dlls.txt has user entries' : ''
-		}.`
-	);
-	Preferences.data = {
-		config: { ...Preferences.data.config, vanillaFixes: true }
-	};
-	return true;
+	return false;
 };
 
-export const launcherRouter = createTRPCRouter({
-	start: publicProcedure.mutation(async () => {
-		const { cleanWdb, minimizeToTrayOnPlay, config, clientDir } =
-			Preferences.data;
-		if (!clientDir) return false;
+type StartResult = { ok: boolean; error?: string };
 
-		const clientPath = path.join(clientDir, 'WoW.exe');
-		Logger.log(`Launching ${clientPath}...`);
-		if (await isGameRunning(clientPath)) return false;
+export const launcherRouter = createTRPCRouter({
+	start: publicProcedure.mutation(async (): Promise<StartResult> => {
+		const { cleanWdb, minimizeToTrayOnPlay, clientDir } = Preferences.data;
+		if (!clientDir) return { ok: false, error: 'No game folder is set.' };
+
+		const exePath = path.join(clientDir, 'WoW.exe');
+		if (!(await fs.pathExists(exePath)))
+			return { ok: false, error: 'WoW.exe was not found in the game folder.' };
+		if (await isGameRunning(exePath))
+			return { ok: false, error: 'WoW is already running.' };
 
 		if (cleanWdb) {
 			Logger.log('Cleaning up WDB...');
-			await fs.remove(path.join(clientPath, 'WDB'));
+			await fs.remove(path.join(clientDir, 'WDB'));
 		}
 
 		Logger.log('Checking Config.wtf...');
 		await patchConfig();
 
-		Logger.log('Launching WoW...');
-		const process = spawn(clientPath, { detached: !minimizeToTrayOnPlay });
+		Logger.log('Applying UI language...');
+		await applyLocalePatch(clientDir, Preferences.data.locale);
 
-		const wantChainloader = await ensureChainloaderTweak(clientDir);
-		if (wantChainloader) {
-			Logger.log('Injecting VanillaFixes...');
-			const vfPath = path.join(clientDir, 'VfPatcher.dll');
+		const loaderPath = path.join(clientDir, 'VanillaFixes.exe');
+		const needsLoader = await chainloaderNeeded(clientDir);
+		const useLoader = needsLoader && (await fs.pathExists(loaderPath));
+		if (needsLoader && !useLoader)
+			Logger.warn(
+				'VanillaFixes.exe is missing but mods/dlls.txt expect a chainloader; ' +
+					'launching WoW.exe directly (mods will not load).'
+			);
 
-			if (!(await fs.pathExists(vfPath))) {
-				Logger.warn(
-					`VfPatcher.dll missing at ${vfPath} — chainloader needed but ` +
-						'the vanillaFixes mod is not installed. Skipping inject; ' +
-						'dlls.txt entries and dependent mods will not load. Install ' +
-						"vanillaFixes from the Mods tab to fix."
-				);
-			} else {
-				const status = inject('WoW.exe', vfPath);
-				if (status) {
-					Logger.error(`Injecting failed with error code ${status}...`);
-					return true;
-				}
-			}
+		const octoLocale = Preferences.data.locale || 'enUS';
+		const gameEnv = { ...process.env, OCTO_LOCALE: octoLocale };
+		Logger.log(
+			useLoader
+				? `Launching via VanillaFixes (OCTO_LOCALE=${octoLocale})...`
+				: `Launching ${exePath} (OCTO_LOCALE=${octoLocale})...`
+		);
+		const child = useLoader
+			? spawn(loaderPath, ['WoW.exe'], {
+					env: gameEnv,
+					cwd: clientDir,
+					detached: !minimizeToTrayOnPlay
+			  })
+			: spawn(exePath, {
+					env: gameEnv,
+					cwd: clientDir,
+					detached: !minimizeToTrayOnPlay
+			  });
+
+		try {
+			await new Promise<void>((resolve, reject) => {
+				child.once('spawn', resolve);
+				child.once('error', reject);
+			});
+		} catch (e) {
+			Logger.error('Failed to launch the game', e);
+			const message = e instanceof Error ? e.message : String(e);
+			return { ok: false, error: `Failed to launch the game: ${message}` };
 		}
+
+		child.on('error', e => Logger.error('Game process error', e));
 
 		if (!minimizeToTrayOnPlay) {
 			mainWindow?.close();
-			return true;
+			return { ok: true };
 		}
 
 		minimizeToTray();
-		process.on('exit', () => {
+		child.on('exit', () => {
 			Logger.log('WoW stopped');
 			restoreFromTray();
 		});
-		return true;
+		return { ok: true };
 	})
 });
