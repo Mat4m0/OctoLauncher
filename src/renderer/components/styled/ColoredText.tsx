@@ -2,7 +2,7 @@ type Run = { text: string; color?: string };
 
 const tokenize = (s: string): Run[] => {
 	const runs: Run[] = [];
-	const re = /\|c([0-9a-fA-F]{8})|\|r/g;
+	const re = /\|c([0-9a-fA-F]{8})|\|r/gi;
 	let i = 0;
 	let color: string | undefined;
 	let m: RegExpExecArray | null;
