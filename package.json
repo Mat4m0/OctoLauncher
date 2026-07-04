@@ -1,6 +1,6 @@
 {
 	"name": "octo-launcher",
-	"version": "1.1.1",
+	"version": "1.2.0",
 	"description": "An Electron application for launching and updating the OctoWoW client",
 	"author": "OctoWoW",
 	"copyright": "Copyright © 2026 OctoWoW",
@@ -9,11 +9,14 @@
 		"start": "electron-vite preview",
 		"dev": "electron-vite dev",
 		"server": "cd server && npm run dev",
-		"postinstall": "electron-builder install-app-deps",
+		"postinstall": "electron-builder install-app-deps && node scripts/scrub-native-paths.cjs",
 		"build": "electron-vite build",
 		"build:test": "electron-vite build --mode test",
+		"build:ptr": "electron-vite build --mode ptr",
 		"pack": "electron-builder --config",
-		"dist": "tsc && npm run build && npm run pack"
+		"pack:ptr": "electron-builder --config electron-builder.ptr.yml",
+		"dist": "tsc && npm run build && npm run pack",
+		"dist:ptr": "tsc && npm run build:ptr && npm run pack:ptr"
 	},
 	"dependencies": {
 		"@electron-toolkit/preload": "^1.0.3",
@@ -27,6 +30,7 @@
 		"adm-zip": "^0.5.17",
 		"classnames": "^2.3.2",
 		"dll-inject": "^0.0.3",
+		"dompurify": "^3.4.11",
 		"electron-log": "^5.1.5",
 		"electron-trpc": "^0.5.2",
 		"electron-updater": "^5.3.0",

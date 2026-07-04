@@ -97,7 +97,6 @@ export const applyLocalePatch = async (
 		)
 			return;
 	} catch {
-		/* ignore */
 	}
 
 	try {

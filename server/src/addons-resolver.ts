@@ -112,7 +112,6 @@ const giteaProvider: Provider = {
 		)}`
 };
 
-// only allow known git hosts over https
 const parseGitUrl = (
 	git: string
 ): { owner: string; repo: string; provider: Provider } => {

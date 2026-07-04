@@ -93,8 +93,7 @@ export const MODS: ModEntry[] = [
 			pinnedTag: '0.2',
 			format: 'zip',
 			extractMap: {
-				'VanillaMultiMonitorFix.dll': 'VanillaMultiMonitorFix.dll',
-				'VMMFix_preferred_monitor.txt': 'VMMFix_preferred_monitor.txt'
+				'VanillaMultiMonitorFix.dll': 'VanillaMultiMonitorFix.dll'
 			}
 		},
 		registerInDllsTxt: 'VanillaMultiMonitorFix.dll'

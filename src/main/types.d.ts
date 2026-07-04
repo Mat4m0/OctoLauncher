@@ -5,4 +5,8 @@ export {
 	type ModsStatus,
 	type ModRowStatus
 } from './modules/mods';
-export { type NewsItem, type NewsFeed } from '../common/schemas';
+export {
+	type NewsItem,
+	type NewsFeed,
+	type ForumAnnouncement
+} from '../common/schemas';

@@ -39,7 +39,6 @@ const DialogButton = ({
 		ref.current?.close();
 	}, []);
 
-	// Click away
 	useEffect(() => {
 		if (!clickAway) return;
 		const callback = (e: MouseEvent) => e.target === ref.current && close();

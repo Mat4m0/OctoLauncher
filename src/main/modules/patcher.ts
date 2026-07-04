@@ -97,7 +97,6 @@ export const patchExecutable = async () => {
 					[0x006e62a8, [0x006e62a9]]
 				]
 			},
-			// version-pinned in-place patch of the WoW.exe routine at this offset
 			{
 				synthetic: true,
 				key: 'skillUiGateHijack',
@@ -124,6 +123,22 @@ export const patchExecutable = async () => {
 							0x3b, 0xfb, 0x7c, 0xdd, 0x5f, 0x5e, 0x33, 0xc0, 0x5b, 0x8b, 0xe5,
 							0x5d, 0xc2, 0x04, 0x00, 0x5f, 0x8b, 0xc6, 0x5e, 0x5b, 0x8b, 0xe5,
 							0x5d, 0xc2, 0x04, 0x00, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90
+						]
+					]
+				]
+			},
+			{
+				synthetic: true,
+				key: 'octowowUrlAllowlist',
+				type: 'bytes',
+				default: true,
+				forced: true,
+				tweaks: [
+					[
+						0x45ccd8,
+						[
+							0x6f, 0x63, 0x74, 0x6f, 0x77, 0x6f, 0x77, 0x2e, 0x73, 0x74,
+							0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 						]
 					]
 				]
@@ -180,7 +195,9 @@ export const patchConfig = async (forceTweaks = false) => {
 	);
 
 	const primaryDisplay = screen.getPrimaryDisplay();
-	const { width, height } = primaryDisplay.bounds;
+	const scale = primaryDisplay.scaleFactor || 1;
+	const width = Math.round(primaryDisplay.bounds.width * scale);
+	const height = Math.round(primaryDisplay.bounds.height * scale);
 
 	const parsed = {
 		scriptMemory: 512000,

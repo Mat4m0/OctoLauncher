@@ -24,7 +24,12 @@ const skipFiles = new Set([
 	'.manifest-overrides.json'
 ]);
 
-const skipPatterns: RegExp[] = [/\.bak(\.|$)/, /\.crashing(\.|$)/];
+const skipPatterns: RegExp[] = [
+	/\.bak([.\-]|$)/,
+	/\.crashing(\.|$)/,
+	/\.torrent$/,
+	/^manifest\.json\./
+];
 const isSkipPattern = (file: string) => skipPatterns.some(p => p.test(file));
 
 const skipDirsPosix = new Set([

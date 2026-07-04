@@ -5,6 +5,7 @@ import { api } from '~renderer/utils/api';
 import { useT } from '~renderer/i18n';
 import useScrollHint from '~renderer/utils/useScrollHint';
 
+import ForumAnnouncementPanel from '../ForumAnnouncementPanel';
 import IconSpinner from '../styled/IconSpinner';
 import TextButton from '../styled/TextButton';
 
@@ -49,7 +50,8 @@ const NewsEntry = ({ item }: { item: NewsItem }) => {
 	);
 };
 
-const NewsTab = () => {
+// The "Announcements" list — most-recent forum topics as short previews + links.
+const AnnouncementsBox = () => {
 	const t = useT();
 	const query = api.news.list.useQuery(undefined, {
 		staleTime: 5 * 60 * 1000,
@@ -59,9 +61,9 @@ const NewsTab = () => {
 	const scrollRef = useScrollHint<HTMLDivElement>();
 
 	return (
-		<div className="tw-surface flex min-h-0 flex-grow flex-col gap-3">
+		<div className="tw-surface flex min-h-0 w-[360px] shrink-0 flex-col gap-3">
 			<div className="flex items-center justify-between">
-				<h4 className="tw-color">{t('misc.newsTitle')}</h4>
+				<h4 className="tw-color">{t('misc.announcementsTitle')}</h4>
 				<TextButton
 					icon={RefreshCw}
 					size={18}
@@ -105,5 +107,15 @@ const NewsTab = () => {
 		</div>
 	);
 };
+
+// The News tab holds both boxes side by side: the parchment "newsletter" (the
+// featured Nautilus News Network post, biggest) and the "Announcements" list.
+// Living inside the tab means they only show on News — not on Tweaks/Addons/Mods.
+const NewsTab = () => (
+	<div className="flex min-h-0 flex-grow gap-3">
+		<ForumAnnouncementPanel />
+		<AnnouncementsBox />
+	</div>
+);
 
 export default NewsTab;

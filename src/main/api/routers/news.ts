@@ -8,7 +8,9 @@ import { createTRPCRouter, publicProcedure } from '../trpc';
 const FETCH_TIMEOUT_MS = 8_000;
 
 const fetchNews = async (): Promise<NewsItem[]> => {
-	const url = `${import.meta.env.MAIN_VITE_SERVER_URL || 'https://octowow.st'}/news.json`;
+	const url = `${
+		import.meta.env.MAIN_VITE_SERVER_URL || 'https://octowow.st'
+	}/forum/octonews.php?mode=list&forum=2&limit=3`;
 	const controller = new AbortController();
 	const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 	try {

@@ -53,7 +53,6 @@ const readTocData = (content: string) =>
 const isUnsafeFolder = (name?: string) =>
 	!name || name === '.' || name === '..' || /[/\\]/.test(name);
 
-// only allow known git hosts over https
 const ALLOWED_GIT_HOSTS = [
 	'github.com',
 	'gitlab.com',
@@ -150,7 +149,6 @@ class AddonsClass extends Observable<AddonsStatus> {
 					)?.[1];
 				}
 			} catch {
-				/* ignore */
 			}
 
 			const folder = gitUrl.slice(0, -4).split('/').at(-1);

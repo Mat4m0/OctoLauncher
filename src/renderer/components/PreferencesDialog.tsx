@@ -44,6 +44,7 @@ const PreferencesDialog = ({ close }: Props) => {
 	const setPref = api.preferences.set.useMutation();
 
 	const verify = api.updater.verify.useMutation();
+	const repair = api.mods.repair.useMutation();
 	const openInstallFolder = api.general.openInstallFolder.useMutation();
 	const openLogFile = api.general.openLogFile.useMutation();
 	const addExclusion = api.general.addDefenderExclusion.useMutation();
@@ -147,7 +148,7 @@ const PreferencesDialog = ({ close }: Props) => {
 					<h4 className="tw-color">{t('prefs.troubleshooting')}</h4>
 					<TextButton
 						icon={ShieldCheck}
-						onClick={() => verify.mutateAsync().then(close)}
+						onClick={() => repair.mutateAsync().then(close)}
 						className="!items-start text-left text-warmGreen"
 					>
 						{t('prefs.verifyGameFiles')}

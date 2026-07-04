@@ -5,11 +5,21 @@ import { z } from 'zod';
 import { mainWindow } from '~main/index';
 import Preferences from '~main/modules/preferences';
 import { addDefenderExclusions } from '~main/modules/defender';
+import { detectHardware, recommendFarClip } from '~main/modules/hardware';
 
 import { createTRPCRouter, publicProcedure } from '../trpc';
 
 export const generalRouter = createTRPCRouter({
 	appVersion: publicProcedure.query(() => app.getVersion()),
+	hardware: publicProcedure.query(() => {
+		const hardware = Preferences.data.hardware ?? null;
+		return { hardware, recommendedFarClip: recommendFarClip(hardware) };
+	}),
+	redetectHardware: publicProcedure.mutation(async () => {
+		const hardware = await detectHardware();
+		Preferences.data = { hardware };
+		return { hardware, recommendedFarClip: recommendFarClip(hardware) };
+	}),
 	quit: publicProcedure.mutation(() => app.quit()),
 	minimize: publicProcedure.mutation(() => mainWindow?.minimize()),
 	openLink: publicProcedure

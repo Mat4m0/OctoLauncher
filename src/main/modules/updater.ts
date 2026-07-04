@@ -423,9 +423,15 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 	#clientTotalBytes = 0;
 	#bytesAlreadyOnDisk = 0;
 	#cachePath = path.join(Preferences.userDataDir, 'cache.json');
-	#cache: CacheTree = fs.existsSync(this.#cachePath)
-		? fs.readJSONSync(this.#cachePath)
-		: {};
+	#cache: CacheTree = this.#readCache();
+
+	#readCache(): CacheTree {
+		try {
+			return fs.existsSync(this.#cachePath) ? fs.readJSONSync(this.#cachePath) : {};
+		} catch {
+			return {};
+		}
+	}
 
 	async #saveCache() {
 		await fs.writeJSON(this.#cachePath, this.#cache);
@@ -618,7 +624,11 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 				const item = getManifestItem(hashTree, filePath);
 				if (!item) return undefined;
 
-				if (item.type === 'del') return item;
+				if (item.type === 'del') {
+					if (await fs.exists(path.join(clientPath, ...filePath)))
+						return item;
+					return undefined;
+				}
 
 				if (item.type === 'dir') {
 					const files = (
@@ -832,7 +842,6 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 
 		try {
 			if (clean) {
-				// never wipe a drive root or a non-client dir
 				const resolvedClientPath = path.resolve(clientPath);
 				const isFilesystemRoot =
 					path.parse(resolvedClientPath).root === resolvedClientPath;
@@ -854,9 +863,10 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 					message: 'Cleaning up old files...'
 				};
 
+				const preserve = new Set(['octolauncher.exe', 'wtf', 'interface', 'screenshots']);
 				const files = await fs.readdir(clientPath);
 				for (const file of files) {
-					if (file === 'OctoLauncher.exe') continue;
+					if (preserve.has(file.toLowerCase())) continue;
 					await fs.rm(path.join(clientPath, file), {
 						recursive: true,
 						force: true

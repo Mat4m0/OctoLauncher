@@ -79,7 +79,6 @@ app.get(
 		const filePath = req.params[0];
 		console.log(`Fetching file: ${filePath}`);
 
-		// keep the resolved path inside SourceDir
 		const root = path.resolve(SourceDir);
 		const target = path.resolve(SourceDir, filePath);
 		if (target !== root && !target.startsWith(root + path.sep)) {

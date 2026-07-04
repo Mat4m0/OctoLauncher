@@ -114,7 +114,7 @@ class ModsClass extends Observable<ModsStatus> {
 			const vmmfDll = path.join(clientDir, 'VanillaMultiMonitorFix.dll');
 			const vmmfCfg = path.join(clientDir, 'VMMFix_preferred_monitor.txt');
 			if ((await fs.pathExists(vmmfDll)) && !(await fs.pathExists(vmmfCfg)))
-				await fs.writeFile(vmmfCfg, '1\n', 'utf8').catch(() => {});
+				await fs.writeFile(vmmfCfg, '0\n', 'utf8').catch(() => {});
 		}
 
 		for (const m of MODS) {
@@ -182,7 +182,7 @@ class ModsClass extends Observable<ModsStatus> {
 		this.#patchRow(id, { ignoreUpdates: ignore });
 	}
 
-	async applyAll() {
+	async applyAll(opts: { repairOnly?: boolean } = {}) {
 		const clientDir = Preferences.data?.clientDir;
 		if (!clientDir) {
 			Logger.warn('No clientDir set; cannot apply mods.');
@@ -192,6 +192,7 @@ class ModsClass extends Observable<ModsStatus> {
 			Logger.warn('applyAll already running; ignoring re-entrant call.');
 			return;
 		}
+		await this.verify();
 		this._value = { ...this._value, state: 'busy' };
 		this._notifyObservers();
 
@@ -219,7 +220,7 @@ class ModsClass extends Observable<ModsStatus> {
 					await this.#install(m);
 				} else if (!wantInstalled && isInstalled) {
 					await this.#uninstall(m);
-				} else if (wantInstalled && updateAvailable) {
+				} else if (wantInstalled && updateAvailable && !opts.repairOnly) {
 					await this.#uninstall(m);
 					await this.#install(m);
 				}

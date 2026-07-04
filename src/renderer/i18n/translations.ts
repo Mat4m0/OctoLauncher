@@ -48,7 +48,8 @@ const enUS: Dict = {
 		'Recommended for widescreen window resolutions. [Vanilla: 90] [Tweaks: 110]',
 	'tweaks.farClip.label': 'Render distance',
 	'tweaks.farClip.text':
-		'Increases maximum render distance. [Vanilla: 777] [Tweaks: 10000]',
+		'Increases maximum render distance. Very high values can crash the game on world entry. [Vanilla: 777]',
+	'tweaks.farClip.recommendedHint': 'Recommended for your PC: {value}.',
 	'tweaks.frillDistance.label': 'Ground clutter distance',
 	'tweaks.frillDistance.text':
 		'Changes ground clutter render distance. [Vanilla: 70] [Tweaks: 300]',
@@ -65,6 +66,7 @@ const enUS: Dict = {
 	'tweaks.reset': 'Reset',
 	'tweaks.apply': 'Apply',
 	'misc.newsTitle': 'News',
+	'misc.announcementsTitle': 'Announcements',
 	'misc.newsByAuthor': 'by {author}',
 	'misc.newsReadMore': 'Read more',
 	'misc.refresh': 'Refresh',
@@ -72,6 +74,11 @@ const enUS: Dict = {
 	'misc.newsError': "Couldn't reach the news feed.",
 	'misc.newsEmpty': 'No news yet. Check back later.',
 	'misc.tryAgain': 'Try again',
+	'forum.title': 'Nautilus News Network',
+	'forum.readFullPost': 'Read full post on the forum',
+	'forum.loading': 'Loading latest dispatch...',
+	'forum.error': "Couldn't reach the forum.",
+	'forum.empty': 'No dispatches yet.',
 	'misc.comingSoon': 'Coming soon...',
 	'misc.selfUpdateCheckFailed': 'Update check failed: {message}',
 	'misc.selfUpdateAvailable':
@@ -268,7 +275,8 @@ const deDE: Dict = {
 		'Empfohlen für Breitbild-Fensterauflösungen. [Vanilla: 90] [Tweaks: 110]',
 	'tweaks.farClip.label': 'Sichtweite',
 	'tweaks.farClip.text':
-		'Erhöht die maximale Sichtweite. [Vanilla: 777] [Tweaks: 10000]',
+		'Erhöht die maximale Sichtweite. Sehr hohe Werte können beim Betreten der Welt zum Absturz führen. [Vanilla: 777]',
+	'tweaks.farClip.recommendedHint': 'Empfohlen für deinen PC: {value}.',
 	'tweaks.frillDistance.label': 'Bodendetail-Distanz',
 	'tweaks.frillDistance.text':
 		'Ändert die Renderdistanz für Bodendetails. [Vanilla: 70] [Tweaks: 300]',
@@ -490,7 +498,9 @@ const zhCN: Dict = {
 	'tweaks.fieldOfView.text':
 		'推荐用于宽屏窗口分辨率。[Vanilla: 90] [Tweaks: 110]',
 	'tweaks.farClip.label': '渲染距离',
-	'tweaks.farClip.text': '增加最大渲染距离。[Vanilla: 777] [Tweaks: 10000]',
+	'tweaks.farClip.text':
+		'增加最大渲染距离。数值过高可能导致进入游戏世界时崩溃。[Vanilla: 777]',
+	'tweaks.farClip.recommendedHint': '为您的电脑推荐：{value}。',
 	'tweaks.frillDistance.label': '地表杂物距离',
 	'tweaks.frillDistance.text':
 		'更改地表杂物的渲染距离。[Vanilla: 70] [Tweaks: 300]',
@@ -698,7 +708,8 @@ const esES: Dict = {
 		'Recomendado para resoluciones de ventana panorámicas. [Vanilla: 90] [Tweaks: 110]',
 	'tweaks.farClip.label': 'Distancia de renderizado',
 	'tweaks.farClip.text':
-		'Aumenta la distancia máxima de renderizado. [Vanilla: 777] [Tweaks: 10000]',
+		'Aumenta la distancia máxima de renderizado. Los valores muy altos pueden bloquear el juego al entrar al mundo. [Vanilla: 777]',
+	'tweaks.farClip.recommendedHint': 'Recomendado para tu PC: {value}.',
 	'tweaks.frillDistance.label': 'Distancia de la maleza',
 	'tweaks.frillDistance.text':
 		'Cambia la distancia de renderizado de la maleza del suelo. [Vanilla: 70] [Tweaks: 300]',
@@ -922,7 +933,8 @@ const ptBR: Dict = {
 		'Recomendado para resoluções de janela widescreen. [Vanilla: 90] [Tweaks: 110]',
 	'tweaks.farClip.label': 'Distância de renderização',
 	'tweaks.farClip.text':
-		'Aumenta a distância máxima de renderização. [Vanilla: 777] [Tweaks: 10000]',
+		'Aumenta a distância máxima de renderização. Valores muito altos podem travar o jogo ao entrar no mundo. [Vanilla: 777]',
+	'tweaks.farClip.recommendedHint': 'Recomendado para o seu PC: {value}.',
 	'tweaks.frillDistance.label': 'Distância da vegetação do solo',
 	'tweaks.frillDistance.text':
 		'Altera a distância de renderização da vegetação do solo. [Vanilla: 70] [Tweaks: 300]',
@@ -1144,7 +1156,8 @@ const ruRU: Dict = {
 		'Рекомендуется для широкоэкранных разрешений. [Vanilla: 90] [Tweaks: 110]',
 	'tweaks.farClip.label': 'Дальность прорисовки',
 	'tweaks.farClip.text':
-		'Увеличивает максимальную дальность прорисовки. [Vanilla: 777] [Tweaks: 10000]',
+		'Увеличивает максимальную дальность прорисовки. Слишком высокие значения могут привести к вылету при входе в мир. [Vanilla: 777]',
+	'tweaks.farClip.recommendedHint': 'Рекомендовано для вашего ПК: {value}.',
 	'tweaks.frillDistance.label': 'Дальность травы и деталей',
 	'tweaks.frillDistance.text':
 		'Изменяет дальность прорисовки травы и мелких деталей земли. [Vanilla: 70] [Tweaks: 300]',

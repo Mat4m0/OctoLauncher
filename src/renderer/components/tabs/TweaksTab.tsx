@@ -78,6 +78,15 @@ const TweaksTab = () => {
 	});
 	const { handleSubmit, reset, formState } = form;
 
+	const { data: hw } = api.general.hardware.useQuery();
+	const recommendedFarClip = hw?.recommendedFarClip;
+	const farClipValue = form.watch('farClip');
+	const farClipText =
+		t('tweaks.farClip.text') +
+		(recommendedFarClip != null
+			? ' ' + t('tweaks.farClip.recommendedHint', { value: recommendedFarClip })
+			: '');
+
 	const isApplying =
 		setPref.isLoading || applyPatch.isLoading || verify.isLoading;
 
@@ -90,7 +99,7 @@ const TweaksTab = () => {
 	return (
 		<form
 			onSubmit={handleSubmit(async config => {
-				await setPref.mutateAsync({ config });
+				await setPref.mutateAsync({ config, farClipUserSet: true });
 				await applyPatch.mutateAsync();
 				await verify.mutateAsync();
 
@@ -143,7 +152,11 @@ const TweaksTab = () => {
 					id="farClip"
 					label={t('tweaks.farClip.label')}
 					type="number"
-					text={t('tweaks.farClip.text')}
+					text={farClipText}
+					recommended={
+						recommendedFarClip != null &&
+						Number(farClipValue) === recommendedFarClip
+					}
 					min={100}
 					max={10000}
 					sensitivity={3}
@@ -199,8 +212,11 @@ const TweaksTab = () => {
 				</p>
 				<TextButton
 					onClick={async () => {
-						const config = ConfigWtfSchema.parse({});
-						await setPref.mutateAsync({ config });
+						const config =
+							recommendedFarClip != null
+								? { ...ConfigWtfSchema.parse({}), farClip: recommendedFarClip }
+								: ConfigWtfSchema.parse({});
+						await setPref.mutateAsync({ config, farClipUserSet: false });
 						reset(config);
 					}}
 				>

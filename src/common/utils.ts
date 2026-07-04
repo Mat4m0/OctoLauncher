@@ -1,6 +1,5 @@
 type Path = readonly (string | number)[];
 
-// reject prototype-polluting keys
 const isUnsafeKey = (key: string | number) =>
 	key === '__proto__' || key === 'constructor' || key === 'prototype';
 

@@ -36,6 +36,18 @@ export const ModStateSchema = z.object({
 });
 export type ModState = z.infer<typeof ModStateSchema>;
 
+export const HardwareInfoSchema = z.object({
+	totalRamMb: z.number(),
+	cpuCores: z.number(),
+	cpuModel: z.string(),
+	gpuModel: z.string(),
+	vramMb: z.number().nullable(),
+	vramSource: z.enum(['registry', 'wmi', 'none']),
+	detectedAt: z.string(),
+	schemaVersion: z.number()
+});
+export type HardwareInfo = z.infer<typeof HardwareInfoSchema>;
+
 export const PreferencesSchema = z.object({
 	isPortable: z.boolean().optional(),
 	server: z.enum(['live', 'ptr']).default('live'),
@@ -60,7 +72,9 @@ export const PreferencesSchema = z.object({
 		})
 		.nullish(),
 	config: ConfigWtfSchema.default({}),
-	mods: z.record(ModStateSchema).default({})
+	mods: z.record(ModStateSchema).default({}),
+	hardware: HardwareInfoSchema.optional(),
+	farClipUserSet: z.boolean().optional()
 });
 export type PreferencesSchema = z.infer<typeof PreferencesSchema>;
 
@@ -105,7 +119,7 @@ export const NewsItemSchema = z.object({
 	date: z.string(),
 	body: z.string(),
 	url: z.string().url().optional(),
-	author: z.string().optional()
+	author: z.string().nullish()
 });
 export type NewsItem = z.infer<typeof NewsItemSchema>;
 
@@ -113,3 +127,13 @@ export const NewsFeedSchema = z.object({
 	items: z.array(NewsItemSchema)
 });
 export type NewsFeed = z.infer<typeof NewsFeedSchema>;
+
+export const ForumAnnouncementSchema = z.object({
+	id: z.string(),
+	title: z.string(),
+	author: z.string().nullish(),
+	date: z.string(),
+	url: z.string().url(),
+	html: z.string()
+});
+export type ForumAnnouncement = z.infer<typeof ForumAnnouncementSchema>;

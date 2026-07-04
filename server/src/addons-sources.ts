@@ -231,8 +231,9 @@ export const defaultSources: AddonSource[] = [
 		description: 'Smart consolidated buff frames with extensive customization'
 	},
 	{
-		git: 'https://github.com/acolis/VitalWatch.git',
-		description: 'Customizable health, mana, and aggro alert system for solo, group, and raid play'
+		git: 'https://octowow.st/git/shaga/LifeSafer_LowHealthWarning.git',
+		branch: 'main',
+		description: 'Low health and mana fullscreen flash warnings with heartbeat sound; re-enables the hidden Blizzard alert effect'
 	},
 	{
 		git: 'https://github.com/Fiurs-Hearth/WIIIUI.git',

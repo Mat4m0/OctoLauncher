@@ -1,6 +1,6 @@
 import { join } from 'path';
 
-import { app, shell, BrowserWindow, screen } from 'electron';
+import { app, shell, session, BrowserWindow, screen } from 'electron';
 import { electronApp, optimizer, is } from '@electron-toolkit/utils';
 import { createIPCHandler } from 'electron-trpc/main';
 import Logger from 'electron-log/main';
@@ -13,6 +13,11 @@ import Updater from './modules/updater';
 import Addons from './modules/addons';
 import Mods from './modules/mods';
 import { initSelfUpdater } from './modules/selfUpdater';
+import {
+	detectHardware,
+	recommendFarClip,
+	HARDWARE_SCHEMA_VERSION
+} from './modules/hardware';
 
 Logger.initialize();
 Logger.errorHandler.startCatching();
@@ -134,7 +139,50 @@ if (!gotSingleInstanceLock) {
 		Mods.verify();
 		initSelfUpdater();
 
+		void (async () => {
+			try {
+				let hardware = Preferences.data.hardware;
+				if (!hardware || hardware.schemaVersion < HARDWARE_SCHEMA_VERSION) {
+					hardware = await detectHardware();
+					Preferences.data = { hardware };
+				}
+				const rec = recommendFarClip(hardware ?? null);
+				if (
+					Preferences.data.farClipUserSet !== true &&
+					Preferences.data.config.farClip !== rec
+				)
+					Preferences.data = {
+						config: { ...Preferences.data.config, farClip: rec }
+					};
+			} catch (e) {
+				Logger.error('Hardware detection / farClip recommendation failed', e);
+			}
+		})();
+
 		electronApp.setAppUserModelId('st.octowow.launcher');
+
+		if (app.isPackaged) {
+			const serverOrigin = new URL(
+				import.meta.env.MAIN_VITE_SERVER_URL || 'https://octowow.st'
+			).origin;
+			session.defaultSession.webRequest.onHeadersReceived((details, cb) => {
+				cb({
+					responseHeaders: {
+						...details.responseHeaders,
+						'Content-Security-Policy': [
+							[
+								"default-src 'self'",
+								"script-src 'self'",
+								"style-src 'self' 'unsafe-inline'",
+								`img-src 'self' data: https://octowow.st https://forum.octowow.st ${serverOrigin}`,
+								"font-src 'self' data:",
+								"connect-src 'self'"
+							].join('; ')
+						]
+					}
+				});
+			});
+		}
 
 		app.on('browser-window-created', (_, window) => {
 			optimizer.watchWindowShortcuts(window);

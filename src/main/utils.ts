@@ -48,7 +48,6 @@ export const getClientVersion = async () => {
 	const file = await fs.readFile(exePath);
 	const buffer = Buffer.from(file);
 
-	// Fixed addresses in the 1.12.1 client binary.
 	const VERSION_OFFSET = 0x00437c04;
 	const VERSION_LEN = 6;
 	const BUILD_OFFSET = 0x00437bfc;
