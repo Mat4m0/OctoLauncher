@@ -13,6 +13,7 @@ import Preferences from './preferences';
 import Observable from './observable';
 import Updater from './updater';
 import { addDll, removeDll } from './dllsTxt';
+import { detectPrimaryDisplayIndex } from './displays';
 
 const MOD_DOWNLOAD_TIMEOUT_MS = 60_000;
 
@@ -113,8 +114,10 @@ class ModsClass extends Observable<ModsStatus> {
 		if (clientDir) {
 			const vmmfDll = path.join(clientDir, 'VanillaMultiMonitorFix.dll');
 			const vmmfCfg = path.join(clientDir, 'VMMFix_preferred_monitor.txt');
-			if ((await fs.pathExists(vmmfDll)) && !(await fs.pathExists(vmmfCfg)))
-				await fs.writeFile(vmmfCfg, '0\n', 'utf8').catch(() => {});
+			if ((await fs.pathExists(vmmfDll)) && !(await fs.pathExists(vmmfCfg))) {
+				const index = await detectPrimaryDisplayIndex();
+				await fs.writeFile(vmmfCfg, `${index}\n`, 'utf8').catch(() => {});
+			}
 		}
 
 		for (const m of MODS) {
