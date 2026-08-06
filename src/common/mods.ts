@@ -4,6 +4,7 @@ export const ModIdSchema = z.enum([
 	'dxvk',
 	'nampower',
 	'multiMonitorFix',
+	'superWow',
 	'transmogFix',
 	'unitXp',
 	'vanillaFixes',
@@ -19,6 +20,7 @@ export type ModSource =
 			apiUrl?: string;
 			pinnedTag?: string;
 			assetName: string;
+			sha256?: string;
 	  }
 	| {
 			kind: 'archive';
@@ -28,6 +30,7 @@ export type ModSource =
 			pinnedTag?: string;
 			format: 'zip' | 'tar.gz';
 			extractMap: Record<string, string>;
+			sha256?: string;
 	  }
 	| { kind: 'managed' };
 
@@ -97,6 +100,28 @@ export const MODS: ModEntry[] = [
 			}
 		},
 		registerInDllsTxt: 'VanillaMultiMonitorFix.dll'
+	},
+	{
+		id: 'superWow',
+		name: 'SuperWoW',
+		version: '2.2',
+		description:
+			'Extends the client Lua API with unit GUIDs and other data many addons rely on.',
+		repoUrl: 'https://github.com/balakethelock/SuperWoW',
+		requires: ['vanillaFixes'],
+		source: {
+			kind: 'archive',
+			url: 'https://github.com/balakethelock/SuperWoW/releases/download/Release/SuperWoW.release.2.2.zip',
+			apiUrl:
+				'https://api.github.com/repos/balakethelock/SuperWoW/releases/latest',
+			parseLatest: 'githubRelease',
+			pinnedTag: '2.2',
+			format: 'zip',
+			extractMap: {
+				'SuperWoWhook.dll': 'SuperWoWhook.dll'
+			}
+		},
+		registerInDllsTxt: 'SuperWoWhook.dll'
 	},
 	{
 		id: 'transmogFix',
@@ -177,3 +202,9 @@ export const MODS: ModEntry[] = [
 
 export const getMod = (id: ModId): ModEntry | undefined =>
 	MODS.find(m => m.id === id);
+
+const NOT_DEFAULT_ENABLED: ModId[] = [];
+
+export const DEFAULT_ENABLED_MODS: ModId[] = MODS.filter(
+	m => !NOT_DEFAULT_ENABLED.includes(m.id)
+).map(m => m.id);

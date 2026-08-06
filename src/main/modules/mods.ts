@@ -1,4 +1,5 @@
 import path from 'path';
+import { createHash } from 'crypto';
 
 import fs from 'fs-extra';
 import fetch from 'node-fetch';
@@ -13,7 +14,7 @@ import Preferences from './preferences';
 import Observable from './observable';
 import Updater from './updater';
 import { addDll, removeDll } from './dllsTxt';
-import { detectPrimaryDisplayIndex } from './displays';
+import { enumerateDisplays } from './displays';
 
 const MOD_DOWNLOAD_TIMEOUT_MS = 60_000;
 
@@ -105,6 +106,69 @@ class ModsClass extends Observable<ModsStatus> {
 		};
 	}
 
+	async #syncPreferredMonitor(clientDir: string) {
+		const vmmfDll = path.join(clientDir, 'VanillaMultiMonitorFix.dll');
+		if (!(await fs.pathExists(vmmfDll))) return;
+
+		const vmmfCfg = path.join(clientDir, 'VMMFix_preferred_monitor.txt');
+		const existsCfg = await fs.pathExists(vmmfCfg);
+		const current = existsCfg
+			? Number(
+					await fs
+						.readFile(vmmfCfg, 'utf8')
+						.then(s => s.trim())
+						.catch(() => '')
+			  )
+			: NaN;
+		const hasCurrent = Number.isInteger(current);
+		const ours = Preferences.data?.vmmfWrittenIndex;
+
+		const devices = await enumerateDisplays();
+		const usable = devices?.filter(d => d.attached && d.width > 0);
+		if (!devices || !usable?.length) {
+			Logger.warn('Could not enumerate displays; preferred monitor unchanged');
+			return;
+		}
+		const primary = usable.find(d => d.primary) ?? usable[0];
+
+		if (hasCurrent && ours === undefined) {
+			const pinned = devices.find(d => d.index === current);
+			const broken = !pinned || !pinned.attached || !pinned.primary;
+			if (!broken) {
+				Preferences.data = { vmmfWrittenIndex: current };
+				Logger.info(`Adopting existing preferred monitor ${current} as chosen`);
+				return;
+			}
+			Logger.warn(
+				`Preferred monitor ${current} (${
+					pinned ? pinned.deviceName : 'missing'
+				}) is ${
+					!pinned || !pinned.attached
+						? 'not attached'
+						: 'not the primary display'
+				}; healing to ${primary.index}`
+			);
+		} else if (hasCurrent && current !== ours) {
+			Logger.info(
+				`Preferred monitor ${current} was set manually; leaving it alone`
+			);
+			Preferences.data = { vmmfWrittenIndex: current };
+			return;
+		} else if (hasCurrent && current === primary.index) {
+			return;
+		}
+
+		await fs
+			.writeFile(vmmfCfg, `${primary.index}\n`, 'utf8')
+			.then(() => {
+				Preferences.data = { vmmfWrittenIndex: primary.index };
+				Logger.info(
+					`Preferred monitor set to ${primary.index} (${primary.deviceName} ${primary.width}x${primary.height})`
+				);
+			})
+			.catch(e => Logger.warn('Failed to write preferred monitor', e));
+	}
+
 	async verify() {
 		this.load();
 		this._notifyObservers();
@@ -112,12 +176,7 @@ class ModsClass extends Observable<ModsStatus> {
 		const clientDir = Preferences.data?.clientDir;
 
 		if (clientDir) {
-			const vmmfDll = path.join(clientDir, 'VanillaMultiMonitorFix.dll');
-			const vmmfCfg = path.join(clientDir, 'VMMFix_preferred_monitor.txt');
-			if ((await fs.pathExists(vmmfDll)) && !(await fs.pathExists(vmmfCfg))) {
-				const index = await detectPrimaryDisplayIndex();
-				await fs.writeFile(vmmfCfg, `${index}\n`, 'utf8').catch(() => {});
-			}
+			await this.#syncPreferredMonitor(clientDir);
 		}
 
 		for (const m of MODS) {
@@ -258,7 +317,7 @@ class ModsClass extends Observable<ModsStatus> {
 
 		if (m.source.kind === 'directFile') {
 			const dest = path.join(clientDir, m.source.assetName);
-			await this.#downloadTo(m.source.url, dest);
+			await this.#downloadTo(m.source.url, dest, m.source.sha256);
 			written.push(m.source.assetName);
 		} else if (m.source.kind === 'archive') {
 			const scratch = path.join(clientDir, '.octolauncher-tmp');
@@ -267,7 +326,7 @@ class ModsClass extends Observable<ModsStatus> {
 				scratch,
 				`${m.id}-${Date.now()}.${m.source.format}`
 			);
-			await this.#downloadTo(m.source.url, tmp);
+			await this.#downloadTo(m.source.url, tmp, m.source.sha256);
 			this.#patchRow(m.id, { state: 'installing' });
 
 			const map = m.source.extractMap;
@@ -360,7 +419,7 @@ class ModsClass extends Observable<ModsStatus> {
 		this.#patchRow(m.id, { state: 'idle', installedVersion: undefined });
 	}
 
-	async #downloadTo(url: string, dest: string) {
+	async #downloadTo(url: string, dest: string, sha256?: string) {
 		const res = await fetch(url, {
 			headers: { 'User-Agent': 'OctoLauncher' },
 			timeout: MOD_DOWNLOAD_TIMEOUT_MS
@@ -368,6 +427,15 @@ class ModsClass extends Observable<ModsStatus> {
 		if (!res.ok) throw new Error(`Download failed ${res.status}: ${url}`);
 		await fs.ensureDir(path.dirname(dest));
 		const buf = await res.arrayBuffer();
+
+		if (sha256) {
+			const got = createHash('sha256').update(Buffer.from(buf)).digest('hex');
+			if (got !== sha256.toLowerCase())
+				throw new Error(
+					`Checksum mismatch for ${path.basename(dest)}: expected ${sha256}, got ${got}. Refusing to install.`
+				);
+		}
+
 		await fs.writeFile(dest, Buffer.from(buf));
 		if (!(await fs.pathExists(dest)))
 			throw new Error(

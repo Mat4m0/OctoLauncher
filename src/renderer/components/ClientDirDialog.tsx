@@ -1,5 +1,5 @@
 import { useForm } from 'react-hook-form';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { PreferencesSchema } from '~common/schemas';
 import zodResolver from '~renderer/utils/zodResolver';
@@ -8,6 +8,7 @@ import { useT } from '~renderer/i18n';
 
 import TextButton from './styled/TextButton';
 import FilePickerInput from './form/FilePickerInput';
+import CheckboxInput from './form/CheckboxInput';
 import CloseButton from './styled/CloseButton';
 
 type Props = { close: () => void };
@@ -36,6 +37,19 @@ const ClientDirDialog = ({ close }: Props) => {
 		resolver: zodResolver(PreferencesSchema.pick({ clientDir: true }))
 	});
 
+	const chosen = watch('clientDir');
+	const [acceptEmpty, setAcceptEmpty] = useState(false);
+
+	const chosenIsClient = api.preferences.isValidClientDir.useQuery(chosen, {
+		enabled: !!chosen && !pref?.isPortable
+	});
+	const needsEmptyConfirm =
+		!!chosen && chosenIsClient.isFetched && chosenIsClient.data === false;
+
+	useEffect(() => {
+		setAcceptEmpty(false);
+	}, [chosen]);
+
 	useEffect(() => {
 		pref && reset(pref);
 	}, [reset, pref]);
@@ -62,6 +76,7 @@ const ClientDirDialog = ({ close }: Props) => {
 		<form
 			className="tw-dialog"
 			onSubmit={handleSubmit(async ({ clientDir }) => {
+				if (needsEmptyConfirm && !acceptEmpty) return;
 				try {
 					await setPref.mutateAsync({ clientDir });
 					verify.mutate();
@@ -105,9 +120,23 @@ const ClientDirDialog = ({ close }: Props) => {
 				</p>
 			)}
 
+			{needsEmptyConfirm && (
+				<>
+					<p className="text-secondary text-sm">
+						{t('prefs.noClientHere', { exe: 'WoW.exe' })}
+					</p>
+					<CheckboxInput
+						value={acceptEmpty}
+						setValue={setAcceptEmpty}
+						label={t('prefs.noClientHereConfirm')}
+					/>
+				</>
+			)}
+
 			<TextButton
 				type="submit"
 				loading={formState.isSubmitting}
+				disabled={needsEmptyConfirm && !acceptEmpty}
 				className="self-end text-green"
 			>
 				{t('prefs.confirm')}

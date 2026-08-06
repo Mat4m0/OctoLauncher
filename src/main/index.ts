@@ -21,6 +21,7 @@ import {
 
 Logger.initialize();
 Logger.errorHandler.startCatching();
+Logger.transports.ipc.level = false;
 Logger.info('Launcher starting...');
 
 app.disableHardwareAcceleration();
@@ -189,6 +190,16 @@ if (!gotSingleInstanceLock) {
 		});
 
 		await createWindow();
+	});
+
+	let settingsFlushed = false;
+	app.on('before-quit', event => {
+		if (settingsFlushed) return;
+		settingsFlushed = true;
+		event.preventDefault();
+		Promise.race([Preferences.save(), new Promise(r => setTimeout(r, 3000))])
+			.catch(e => Logger.error('Failed to flush settings before quit', e))
+			.finally(() => app.quit());
 	});
 
 	app.on('window-all-closed', () => {

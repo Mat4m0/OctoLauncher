@@ -50,7 +50,6 @@ const NewsEntry = ({ item }: { item: NewsItem }) => {
 	);
 };
 
-// The "Announcements" list — most-recent forum topics as short previews + links.
 const AnnouncementsBox = () => {
 	const t = useT();
 	const query = api.news.list.useQuery(undefined, {
@@ -108,9 +107,6 @@ const AnnouncementsBox = () => {
 	);
 };
 
-// The News tab holds both boxes side by side: the parchment "newsletter" (the
-// featured Nautilus News Network post, biggest) and the "Announcements" list.
-// Living inside the tab means they only show on News — not on Tweaks/Addons/Mods.
 const NewsTab = () => (
 	<div className="flex min-h-0 flex-grow gap-3">
 		<ForumAnnouncementPanel />

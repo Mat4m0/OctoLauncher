@@ -34,6 +34,9 @@ const enUS: Dict = {
 	'launch.remaining': 'remaining',
 	'launch.calculating': 'calculating…',
 	'launch.onDisk': 'on disk',
+	'tweaks.raidVisuals.label': 'Updated Raid Visuals',
+	'tweaks.raidVisuals.text':
+		'Optional ~9 MB download. Adds clearer ground markers and sounds for raid boss abilities, kept in sync with the server automatically. (AKA Patch-O)',
 	'tweaks.alwaysAutoLoot.label': 'Always auto-loot',
 	'tweaks.alwaysAutoLoot.text':
 		'Reverses auto-loot behavior to always auto-loot and disable auto-with bound key.',
@@ -224,6 +227,10 @@ const enUS: Dict = {
 	'prefs.upgradeExisting':
 		'You may also choose a directory with an existing Turtle WoW or Vanilla WoW installation, and it will be automatically upgraded.',
 	'prefs.installDirectory': 'Install directory:',
+	'prefs.noClientHere':
+		'No {exe} in this folder. The launcher will download a fresh client here, and it will not contain your existing addons or settings. If you already have an install, pick that folder instead.',
+	'prefs.noClientHereConfirm':
+		'I understand — download a fresh client into this folder',
 	'prefs.confirm': 'Confirm'
 };
 
@@ -260,6 +267,9 @@ const deDE: Dict = {
 	'launch.remaining': 'verbleibend',
 	'launch.calculating': 'wird berechnet…',
 	'launch.onDisk': 'auf der Festplatte',
+	'tweaks.raidVisuals.label': 'Aktualisierte Raid-Effekte',
+	'tweaks.raidVisuals.text':
+		'Optionaler Download (~9 MB). Fügt deutlichere Bodenmarkierungen und Sounds für Raidboss-Fähigkeiten hinzu, automatisch mit dem Server synchron gehalten. (auch bekannt als Patch-O)',
 	'tweaks.alwaysAutoLoot.label': 'Immer automatisch plündern',
 	'tweaks.alwaysAutoLoot.text':
 		'Kehrt das Auto-Plündern-Verhalten um, sodass immer automatisch geplündert wird und das Auto-Plündern per Tastenkombination deaktiviert ist.',
@@ -429,6 +439,10 @@ const deDE: Dict = {
 	'prefs.upgradeExisting':
 		'Du kannst auch ein Verzeichnis mit einer vorhandenen Turtle-WoW- oder Vanilla-WoW-Installation wählen, und es wird automatisch aktualisiert.',
 	'prefs.installDirectory': 'Installationsverzeichnis:',
+	'prefs.noClientHere':
+		'In diesem Ordner ist keine {exe}. Der Launcher lädt hier einen neuen Client herunter, der deine vorhandenen Addons und Einstellungen nicht enthält. Wenn du bereits eine Installation hast, wähle stattdessen deren Ordner.',
+	'prefs.noClientHereConfirm':
+		'Verstanden — einen neuen Client in diesen Ordner herunterladen',
 	'prefs.confirm': 'Bestätigen',
 	'misc.newsTitle': 'Neuigkeiten',
 	'misc.newsByAuthor': 'von {author}',
@@ -485,6 +499,9 @@ const zhCN: Dict = {
 	'launch.remaining': '剩余',
 	'launch.calculating': '计算中…',
 	'launch.onDisk': '在磁盘上',
+	'tweaks.raidVisuals.label': '团队副本视觉增强',
+	'tweaks.raidVisuals.text':
+		'可选下载（约 9 MB）。为团队首领技能添加更清晰的地面标记和音效，并自动与服务器保持同步。（又称 Patch-O）',
 	'tweaks.alwaysAutoLoot.label': '始终自动拾取',
 	'tweaks.alwaysAutoLoot.text':
 		'反转自动拾取行为，改为始终自动拾取，并禁用按住绑定键的自动拾取。',
@@ -638,6 +655,9 @@ const zhCN: Dict = {
 	'prefs.upgradeExisting':
 		'你也可以选择一个已有 Turtle WoW 或 Vanilla WoW 安装的目录，它将被自动升级。',
 	'prefs.installDirectory': '安装目录：',
+	'prefs.noClientHere':
+		'此文件夹中没有 {exe}。启动器将在此处下载全新的客户端，其中不会包含你现有的插件和设置。如果你已经安装过，请改为选择原有的安装目录。',
+	'prefs.noClientHereConfirm': '我已了解——在此文件夹下载全新客户端',
 	'prefs.confirm': '确认',
 	'misc.newsTitle': '新闻',
 	'misc.newsByAuthor': '作者：{author}',
@@ -693,6 +713,9 @@ const esES: Dict = {
 	'launch.remaining': 'restante',
 	'launch.calculating': 'calculando…',
 	'launch.onDisk': 'en disco',
+	'tweaks.raidVisuals.label': 'Efectos de banda mejorados',
+	'tweaks.raidVisuals.text':
+		'Descarga opcional de ~9 MB. Añade marcadores de suelo y sonidos más claros para las habilidades de los jefes de banda, sincronizados automáticamente con el servidor. (también conocido como Patch-O)',
 	'tweaks.alwaysAutoLoot.label': 'Saqueo automático siempre',
 	'tweaks.alwaysAutoLoot.text':
 		'Invierte el comportamiento del saqueo automático para saquear siempre de forma automática y desactivar el saqueo automático con tecla asignada.',
@@ -861,6 +884,10 @@ const esES: Dict = {
 	'prefs.upgradeExisting':
 		'También puedes elegir un directorio con una instalación existente de Turtle WoW o Vanilla WoW, y se actualizará automáticamente.',
 	'prefs.installDirectory': 'Directorio de instalación:',
+	'prefs.noClientHere':
+		'No hay ningún {exe} en esta carpeta. El launcher descargará aquí un cliente nuevo, que no incluirá tus addons ni tu configuración actuales. Si ya tienes una instalación, elige esa carpeta.',
+	'prefs.noClientHereConfirm':
+		'Lo entiendo: descargar un cliente nuevo en esta carpeta',
 	'prefs.confirm': 'Confirmar',
 	'misc.newsTitle': 'Noticias',
 	'misc.newsByAuthor': 'por {author}',
@@ -919,6 +946,9 @@ const ptBR: Dict = {
 	'launch.remaining': 'restante',
 	'launch.calculating': 'calculando…',
 	'launch.onDisk': 'no disco',
+	'tweaks.raidVisuals.label': 'Efeitos de raide atualizados',
+	'tweaks.raidVisuals.text':
+		'Download opcional de ~9 MB. Adiciona marcações de chão e sons mais claros para as habilidades dos chefes de raide, mantidos em sincronia com o servidor automaticamente. (também conhecido como Patch-O)',
 	'tweaks.alwaysAutoLoot.label': 'Saque automático sempre ativo',
 	'tweaks.alwaysAutoLoot.text':
 		'Inverte o comportamento do saque automático para saquear sempre automaticamente e desativa o saque automático com a tecla atribuída.',
@@ -1086,6 +1116,9 @@ const ptBR: Dict = {
 	'prefs.upgradeExisting':
 		'Você também pode escolher um diretório com uma instalação existente do Turtle WoW ou Vanilla WoW, que será atualizada automaticamente.',
 	'prefs.installDirectory': 'Diretório de instalação:',
+	'prefs.noClientHere':
+		'Não há {exe} nesta pasta. O launcher vai baixar um cliente novo aqui, sem os seus addons e configurações atuais. Se você já tem uma instalação, escolha a pasta dela.',
+	'prefs.noClientHereConfirm': 'Entendi — baixar um cliente novo nesta pasta',
 	'prefs.confirm': 'Confirmar',
 	'misc.newsTitle': 'Notícias',
 	'misc.newsByAuthor': 'por {author}',
@@ -1142,6 +1175,9 @@ const ruRU: Dict = {
 	'launch.remaining': 'осталось',
 	'launch.calculating': 'вычисление…',
 	'launch.onDisk': 'на диске',
+	'tweaks.raidVisuals.label': 'Улучшенные эффекты рейдов',
+	'tweaks.raidVisuals.text':
+		'Дополнительная загрузка (~9 МБ). Добавляет более заметные отметки на земле и звуки для способностей рейдовых боссов, автоматически синхронизируется с сервером. (также известен как Patch-O)',
 	'tweaks.alwaysAutoLoot.label': 'Всегда автосбор',
 	'tweaks.alwaysAutoLoot.text':
 		'Меняет поведение автосбора на противоположное: всегда автоматически собирать добычу, а ручной сбор включается зажатой клавишей.',
@@ -1305,6 +1341,9 @@ const ruRU: Dict = {
 	'prefs.upgradeExisting':
 		'Вы также можете выбрать папку с уже установленным Turtle WoW или Vanilla WoW, и она будет автоматически обновлена.',
 	'prefs.installDirectory': 'Папка установки:',
+	'prefs.noClientHere':
+		'В этой папке нет {exe}. Лаунчер скачает сюда новый клиент, в котором не будет ваших текущих аддонов и настроек. Если игра уже установлена, выберите её папку.',
+	'prefs.noClientHereConfirm': 'Понятно — скачать новый клиент в эту папку',
 	'prefs.confirm': 'Подтвердить',
 	'misc.newsTitle': 'Новости',
 	'misc.newsByAuthor': 'от {author}',

@@ -8,6 +8,7 @@ import Preferences from '~main/modules/preferences';
 import { ConfigWtfSchema, type PreferencesSchema } from '~common/schemas';
 import { isNotUndef } from '~common/utils';
 import { fetchFile } from '~main/modules/updater';
+import { enumerateDisplays } from '~main/modules/displays';
 
 const Servers = {
 	live: {
@@ -32,7 +33,7 @@ type Tweak = TweakKey & {
 } & (
 		| {
 				type: 'bytes';
-				tweaks: [number, number[]][];
+				tweaks: [number, number[], number[]?][];
 		  }
 		| {
 				type: 'int8' | 'uint16' | 'float';
@@ -40,6 +41,9 @@ type Tweak = TweakKey & {
 				value?: number;
 		  }
 	);
+
+const hex = (bytes: number[]) =>
+	bytes.map(b => b.toString(16).padStart(2, '0')).join(' ');
 
 export const patchExecutable = async () => {
 	Logger.log('Patching WoW.exe...');
@@ -129,6 +133,20 @@ export const patchExecutable = async () => {
 			},
 			{
 				synthetic: true,
+				key: 'levitateAnimRangeBounds',
+				type: 'bytes',
+				default: true,
+				forced: true,
+				tweaks: [
+					[
+						0x313d5f,
+						[0x57, 0x8b, 0x55, 0x0c, 0x3b, 0xd0, 0x73, 0x0e],
+						[0x85, 0xc0, 0x57, 0x74, 0x11, 0x8b, 0x55, 0x0c]
+					]
+				]
+			},
+			{
+				synthetic: true,
 				key: 'octowowUrlAllowlist',
 				type: 'bytes',
 				default: true,
@@ -137,8 +155,8 @@ export const patchExecutable = async () => {
 					[
 						0x45ccd8,
 						[
-							0x6f, 0x63, 0x74, 0x6f, 0x77, 0x6f, 0x77, 0x2e, 0x73, 0x74,
-							0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+							0x6f, 0x63, 0x74, 0x6f, 0x77, 0x6f, 0x77, 0x2e, 0x73, 0x74, 0x00,
+							0x00, 0x00, 0x00, 0x00, 0x00
 						]
 					]
 				]
@@ -160,9 +178,24 @@ export const patchExecutable = async () => {
 				buffer.writeUInt16LE(t.value ?? (val as number), t.offset);
 			} else if (t.type === 'bytes') {
 				if (!t.forced && !val) return;
-				t.tweaks.forEach(([offset, bytes]) =>
-					Buffer.from(bytes).copy(buffer, offset)
-				);
+				t.tweaks.forEach(([offset, bytes, expect]) => {
+					if (expect) {
+						const current = buffer.subarray(offset, offset + expect.length);
+						if (current.equals(Buffer.from(bytes))) return;
+						if (!current.equals(Buffer.from(expect)))
+							throw new Error(
+								`"${t.key}" expected [${hex(expect)}] at 0x${offset.toString(16)} ` +
+									`but found [${hex([...current])}] - refusing to patch WoW.exe`
+							);
+					}
+					const written = Buffer.from(bytes).copy(buffer, offset);
+					if (written !== bytes.length)
+						Logger.error(
+							`"${t.key}" wrote ${written}/${bytes.length} bytes at ` +
+								`0x${offset.toString(16)} - past end of file (${buffer.length} bytes). ` +
+								'This tweak is a no-op; the offset is probably a virtual address.'
+						);
+				});
 			}
 		});
 
@@ -172,6 +205,48 @@ export const patchExecutable = async () => {
 		Logger.error('Failed to patch WoW.exe', e);
 		throw e instanceof Error ? e : new Error('Failed to patch WoW.exe');
 	}
+};
+
+const repairResolution = async (
+	clientDir: string,
+	current: string | undefined,
+	lastWritten: string | undefined
+): Promise<{ gxResolution?: string }> => {
+	const devices = await enumerateDisplays();
+	if (!devices?.length) return {};
+
+	const pinnedRaw = await fs
+		.readFile(path.join(clientDir, 'VMMFix_preferred_monitor.txt'), 'utf8')
+		.then(s => s.trim())
+		.catch(() => '');
+	const pinned = pinnedRaw ? Number(pinnedRaw) : NaN;
+	const target =
+		devices.find(d => d.index === pinned && d.attached) ??
+		devices.find(d => d.primary && d.attached);
+	if (!target?.modes.length) return {};
+
+	const native = `${target.width}x${target.height}`;
+	if (!target.modes.includes(native)) return {};
+
+	let owned = !current || current === lastWritten;
+
+	if (!owned && lastWritten === undefined && current) {
+		const width = Number(current.split('x')[0]);
+		if (Number.isFinite(width) && width * 2 < target.width) {
+			Logger.warn(
+				`gxResolution ${current} is far below ${target.deviceName}'s ${native} and predates resolution tracking; treating it as a client fallback`
+			);
+			owned = true;
+		}
+	}
+
+	if (!owned) return {};
+	if (current === native) return {};
+
+	Logger.warn(
+		`gxResolution ${current ?? '<unset>'} is launcher-owned; correcting to ${target.deviceName}'s ${native}`
+	);
+	return { gxResolution: native };
 };
 
 export const patchConfig = async (forceTweaks = false) => {
@@ -194,50 +269,74 @@ export const patchConfig = async (forceTweaks = false) => {
 			.filter(isNotUndef)
 	);
 
+	const isFirstRun = Object.keys(configWtf).length === 0;
+
 	const primaryDisplay = screen.getPrimaryDisplay();
 	const scale = primaryDisplay.scaleFactor || 1;
 	const width = Math.round(primaryDisplay.bounds.width * scale);
 	const height = Math.round(primaryDisplay.bounds.height * scale);
 
-	const parsed = {
-		scriptMemory: 512000,
-		gxResolution: `${width}x${height}`,
-		gxColorBits: primaryDisplay.colorDepth,
-		gxDepthBits: primaryDisplay.colorDepth,
-		gxRefresh: 60,
-		gxMultisample: 8,
-		gxMultisampleQuality: 0,
-		gxTripleBuffer: 1,
-		anisotropic: 16,
-		frillDensity: 48,
-		fullAlpha: 1,
-		SmallCull: 0.01,
-		DistCull: 888.8,
-		shadowLevel: 0,
-		trilinear: 1,
-		specular: 1,
-		pixelShaders: 1,
-		M2UsePixelShaders: 1,
-		particleDensity: 1,
-		unitDrawDist: 300,
-		weatherDensity: 3,
-		movieSubtitle: 1,
-		minimapZoom: 0,
-		minimapInsideZoom: 0,
-		SoundZoneMusicNoDelay: 1,
-		patchList: configWtf['patchList'] ?? Servers[server].patchList,
-		realmName: configWtf['realmName'] ?? Servers[server].realmName,
-		gxWindow: configWtf['gxWindow'] ?? 1,
-		gxMaximize: configWtf['gxMaximize'] ?? 1,
-		gxCursor: configWtf['gxCursor'] ?? 1,
-		checkAddonVersion: configWtf['checkAddonVersion'] ?? 0,
-		farClip: configWtf['farClip'] ?? config.farClip,
-		CameraDistanceMax: configWtf['CameraDistanceMax'] ?? config.cameraDistance,
-		...configWtf,
+	const seededResolution = `${width}x${height}`;
+
+	const seed = isFirstRun
+		? {
+				scriptMemory: 512000,
+				gxResolution: seededResolution,
+				gxColorBits: primaryDisplay.colorDepth,
+				gxDepthBits: primaryDisplay.colorDepth,
+				gxRefresh: 60,
+				gxMultisample: 8,
+				gxMultisampleQuality: 0,
+				gxTripleBuffer: 1,
+				anisotropic: 16,
+				frillDensity: 48,
+				fullAlpha: 1,
+				SmallCull: 0.01,
+				DistCull: 888.8,
+				shadowLevel: 0,
+				trilinear: 1,
+				specular: 1,
+				pixelShaders: 1,
+				M2UsePixelShaders: 1,
+				M2UseShaders: 1,
+				particleDensity: 1,
+				unitDrawDist: 300,
+				weatherDensity: 3,
+				movieSubtitle: 1,
+				minimapZoom: 0,
+				minimapInsideZoom: 0,
+				SoundZoneMusicNoDelay: 1,
+				gxWindow: 1,
+				gxMaximize: 1,
+				gxCursor: 1,
+				checkAddonVersion: 0,
+				farClip: config.farClip,
+				CameraDistanceMax: config.cameraDistance,
+				patchList: Servers[server].patchList,
+				realmName: Servers[server].realmName
+		  }
+		: {};
+
+	const owned = {
 		locale,
 		realmList: Servers[server].realmList,
+		patchList: configWtf['patchList'] ?? Servers[server].patchList,
+		realmName: configWtf['realmName'] ?? Servers[server].realmName,
 		hwDetect: 0,
-		M2UseShaders: 1,
+		BackgroundSound: config.soundInBackground ? 1 : 0
+	};
+
+	const repaired = await repairResolution(
+		clientDir,
+		configWtf['gxResolution'],
+		Preferences.data.lastWrittenResolution
+	);
+
+	const parsed = {
+		...seed,
+		...configWtf,
+		...repaired,
+		...owned,
 		...(forceTweaks
 			? { farClip: config.farClip, CameraDistanceMax: config.cameraDistance }
 			: {})
@@ -250,5 +349,11 @@ export const patchConfig = async (forceTweaks = false) => {
 	const tmpPath = `${configPath}.tmp`;
 	await fs.writeFile(tmpPath, body);
 	await fs.move(tmpPath, configPath, { overwrite: true });
+
+	const chosen =
+		repaired.gxResolution ?? (isFirstRun ? seededResolution : undefined);
+	if (chosen && chosen !== Preferences.data.lastWrittenResolution)
+		Preferences.data = { lastWrittenResolution: chosen };
+
 	Logger.log('Config.wtf successfully patched');
 };

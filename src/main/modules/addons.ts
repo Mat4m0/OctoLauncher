@@ -195,7 +195,7 @@ class AddonsClass extends Observable<AddonsStatus> {
 			: [];
 		const addons: AddonsStatus['addons'] = Object.fromEntries(
 			dirs
-				.filter(d => !d.startsWith('Blizzard_'))
+				.filter(d => !d.startsWith('Blizzard_') && !/\.(tmp|bak)$/.test(d))
 				.map(name => [name, { status: 'fetching' as const, folder: name }])
 		);
 

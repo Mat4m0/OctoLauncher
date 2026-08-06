@@ -15,6 +15,7 @@ const allowedExtra = [
 ];
 
 const vanillaFixes = ['VfPatcher.dll', 'd3d9.dll', 'dxvk.conf'];
+const raidVisuals = ['patch-O.mpq'];
 
 const skipFiles = new Set([
 	'manifest.json',
@@ -45,7 +46,7 @@ const isSkipDir = (...filePath: string[]) =>
 	skipDirsPosix.has(filePath.join('/'));
 
 type FolderTags = 'allowExtra';
-type FileTags = 'vanillaFixes';
+type FileTags = 'vanillaFixes' | 'raidVisuals';
 
 type FileManifest = { name: string } & (
 	| { type: 'dir'; files: FileManifest[]; tags?: FolderTags[] }
@@ -191,6 +192,12 @@ export const buildCache = async (
 			if (stats.isDirectory()) {
 				if (isSkipDir(...filePath, file)) continue;
 				if (file.match(/patch-./)) {
+					if (raidVisuals.includes(`${file}.mpq`))
+						throw new Error(
+							`${file}/ exists beside ${file}.mpq. Opt-in archives must stay ` +
+								'whole-file: an mpq node carries no tags, so this would ' +
+								'ship the patch to every player regardless of preference.'
+						);
 					patches.push(file);
 					const mpqRelPath = path
 						.join(...filePath, `${file}.mpq`)
@@ -243,6 +250,7 @@ export const buildCache = async (
 
 			const tags: FileTags[] = [];
 			vanillaFixes.includes(file) && tags.push('vanillaFixes');
+			raidVisuals.includes(file) && tags.push('raidVisuals');
 
 			tree.push({
 				type: 'file',

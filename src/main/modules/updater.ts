@@ -84,7 +84,7 @@ const friendlyError = (e: unknown): string => {
 };
 
 type FolderTags = 'allowExtra';
-type FileTags = 'vanillaFixes';
+type FileTags = 'vanillaFixes' | 'raidVisuals';
 type FileManifest = { name: string } & (
 	| { type: 'del' }
 	| { type: 'dir'; files: FileManifest[]; tags?: FolderTags[] }
@@ -558,6 +558,7 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 
 		try {
 			const vanillaFixes = Preferences.data.config.vanillaFixes;
+			const raidVisuals = Preferences.data.config.raidVisuals;
 			const modOwnedFiles = new Set<string>();
 			for (const state of Object.values(Preferences.data.mods ?? {}))
 				for (const rel of state?.installedFiles ?? [])
@@ -707,6 +708,12 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 							return { type: 'del', name: item.name };
 						return undefined;
 					}
+				}
+
+				if (item.tags?.includes('raidVisuals') && !raidVisuals) {
+					if (await fs.exists(path.join(clientPath, ...filePath)))
+						return { type: 'del', name: item.name };
+					return undefined;
 				}
 
 				this.status = {

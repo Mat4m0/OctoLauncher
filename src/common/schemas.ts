@@ -17,6 +17,7 @@ const f = {
 
 export const ConfigWtfSchema = z.object({
 	vanillaFixes: f.boolean(),
+	raidVisuals: f.boolean(),
 	largeAddress: f.boolean(true),
 	nameplateRange: f.number(41),
 	alwaysAutoLoot: f.boolean(),
@@ -62,6 +63,8 @@ export const PreferencesSchema = z.object({
 		.default('enUS'),
 	localePatchLetter: z.string().optional(),
 	localePatchLocale: z.string().optional(),
+	vmmfWrittenIndex: z.number().int().nonnegative().optional(),
+	lastWrittenResolution: z.string().optional(),
 	rememberPosition: f.boolean(),
 	windowPosition: z
 		.object({

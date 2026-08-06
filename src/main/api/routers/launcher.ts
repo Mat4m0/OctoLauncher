@@ -47,6 +47,9 @@ export const launcherRouter = createTRPCRouter({
 			await fs.remove(path.join(clientDir, 'WDB'));
 		}
 
+		Logger.log('Syncing preferred monitor...');
+		await Mods.verify();
+
 		Logger.log('Checking Config.wtf...');
 		await patchConfig();
 
@@ -62,21 +65,17 @@ export const launcherRouter = createTRPCRouter({
 					'launching WoW.exe directly (mods will not load).'
 			);
 
-		const octoLocale = Preferences.data.locale || 'enUS';
-		const gameEnv = { ...process.env, OCTO_LOCALE: octoLocale };
 		Logger.log(
 			useLoader
-				? `Launching via VanillaFixes (OCTO_LOCALE=${octoLocale})...`
-				: `Launching ${exePath} (OCTO_LOCALE=${octoLocale})...`
+				? 'Launching via VanillaFixes...'
+				: `Launching ${exePath}...`
 		);
 		const child = useLoader
 			? spawn(loaderPath, ['WoW.exe'], {
-					env: gameEnv,
 					cwd: clientDir,
 					detached: !minimizeToTrayOnPlay
 			  })
 			: spawn(exePath, {
-					env: gameEnv,
 					cwd: clientDir,
 					detached: !minimizeToTrayOnPlay
 			  });

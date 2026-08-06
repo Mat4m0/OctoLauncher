@@ -10,6 +10,7 @@ if (!port) throw new Error('IllegalState');
 const { dir, url, ref } = workerData;
 
 const tmpDir = `${dir}.tmp`;
+const bakDir = `${dir}.bak`;
 
 const run = async () => {
 	await fs.remove(tmpDir);
@@ -23,8 +24,18 @@ const run = async () => {
 		onProgress: (...args) => port.postMessage({ cb: 'onProgress', args })
 	});
 
-	await fs.remove(dir);
-	await fs.move(tmpDir, dir);
+	await fs.remove(bakDir);
+	const hadExisting = await fs.pathExists(dir);
+	if (hadExisting) await fs.move(dir, bakDir);
+
+	try {
+		await fs.move(tmpDir, dir);
+	} catch (e) {
+		if (hadExisting) await fs.move(bakDir, dir).catch(() => undefined);
+		throw e;
+	}
+
+	await fs.remove(bakDir).catch(() => undefined);
 };
 
 run()

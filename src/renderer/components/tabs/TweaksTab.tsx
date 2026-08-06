@@ -119,6 +119,12 @@ const TweaksTab = () => {
 				/>
 				<Item
 					form={form}
+					id="raidVisuals"
+					label={t('tweaks.raidVisuals.label')}
+					text={t('tweaks.raidVisuals.text')}
+				/>
+				<Item
+					form={form}
 					id="largeAddress"
 					label={t('tweaks.largeAddress.label')}
 					text={t('tweaks.largeAddress.text')}
@@ -214,8 +220,15 @@ const TweaksTab = () => {
 					onClick={async () => {
 						const config =
 							recommendedFarClip != null
-								? { ...ConfigWtfSchema.parse({}), farClip: recommendedFarClip }
-								: ConfigWtfSchema.parse({});
+								? {
+										...ConfigWtfSchema.parse({}),
+										farClip: recommendedFarClip,
+										raidVisuals: form.getValues('raidVisuals')
+								  }
+								: {
+										...ConfigWtfSchema.parse({}),
+										raidVisuals: form.getValues('raidVisuals')
+								  };
 						await setPref.mutateAsync({ config, farClipUserSet: false });
 						reset(config);
 					}}

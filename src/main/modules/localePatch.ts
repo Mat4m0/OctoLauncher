@@ -12,7 +12,9 @@ import Logger from 'electron-log/main';
 import Preferences from './preferences';
 
 const PREFERRED = 'L';
-const LETTERS = 'BCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+const ALL_LETTERS = 'BCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+const RAID_LETTER = 'O';
+const ALLOC_LETTERS = ALL_LETTERS.filter(l => l !== RAID_LETTER);
 const MARKER = 'octolocale.marker';
 
 const patchFile = (dataDir: string, letter: string) =>
@@ -42,7 +44,7 @@ const usableSlot = (dataDir: string, letter: string): boolean => {
 };
 
 const removeOurPatch = async (dataDir: string) => {
-	for (const l of LETTERS) {
+	for (const l of ALL_LETTERS) {
 		const f = patchFile(dataDir, l);
 		if (isOurPatch(f)) await fs.remove(f).catch(() => {});
 	}
@@ -79,10 +81,12 @@ export const applyLocalePatch = async (
 
 	const tracked = Preferences.data.localePatchLetter;
 	const letter =
-		(tracked && usableSlot(dataDir, tracked) ? tracked : undefined) ??
+		(tracked && tracked !== RAID_LETTER && usableSlot(dataDir, tracked)
+			? tracked
+			: undefined) ??
 		(usableSlot(dataDir, PREFERRED)
 			? PREFERRED
-			: LETTERS.find(l => usableSlot(dataDir, l)));
+			: ALLOC_LETTERS.find(l => usableSlot(dataDir, l)));
 	if (!letter) {
 		Logger.warn('Locale patch: no usable patch slot');
 		return;
@@ -100,7 +104,7 @@ export const applyLocalePatch = async (
 	}
 
 	try {
-		for (const l of LETTERS) {
+		for (const l of ALL_LETTERS) {
 			if (l === letter) continue;
 			const f = patchFile(dataDir, l);
 			if (isOurPatch(f)) await fs.remove(f).catch(() => {});
