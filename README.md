@@ -2,6 +2,11 @@
 
 Desktop launcher for the OctoWoW (World of Warcraft 1.12.1 private server) client. Built with Electron, React, and tRPC.
 
+> **Unofficial macOS fork.** This repository maintains the macOS launcher port
+> on top of the public OctoWoW launcher source. OctoWoW does not publish or
+> support these Mac builds. See [MAINTAINING.md](MAINTAINING.md) for the upstream
+> synchronization process.
+
 **What it does:**
 - Downloads and patches the OctoWoW game client via a manifest-based CDN updater
 - Rewrites `Config.wtf` with the correct realm/patch-list on every launch
@@ -14,9 +19,21 @@ Desktop launcher for the OctoWoW (World of Warcraft 1.12.1 private server) clien
 
 ## Quick start (players)
 
+### Windows
+
 1. Grab `OctoLauncher.exe` (portable) or `OctoLauncher_Installer.exe` from the [Releases](../../releases) page.
 2. Run it and set your WoW client directory when prompted.
 3. Click **Verify** to download any missing game files, then **Play**.
+
+### macOS
+
+1. Install Rosetta 2, the tested free Wine Staging runtime, and native aria2.
+2. Install the arm64 OctoLauncher DMG and use the suggested `~/Games/OctoWoW` client directory.
+3. Click **Verify** to download any missing game files, then **Play**.
+
+See [BUILD_MAC.md](BUILD_MAC.md) for prerequisites, source builds, and current
+compatibility details. VanillaFixes works on macOS, but DXVK and injected DLL
+mods are disabled because they conflict with or fail under Wine.
 
 No server configuration needed; the launcher connects to `octowow.st` by default.
 
@@ -28,7 +45,7 @@ No server configuration needed; the launcher connects to `octowow.st` by default
 
 | Requirement | Version | Notes |
 |---|---|---|
-| Node.js | 20 LTS | Node 22+ breaks `dll-inject` native bindings: use Node 20 |
+| Node.js | 20 LTS | Matches the current Electron/native-module toolchain |
 | VS 2022 Build Tools | C++ workload + Win SDK | `node-gyp` v10 only detects VS2017-2022 |
 | Python | 3.x | Required by `node-gyp` |
 
@@ -51,7 +68,8 @@ winget install Microsoft.VisualStudio.2022.BuildTools `
 npm install
 ```
 
-`postinstall` rebuilds the native modules (`dll-inject`, `stormlib-node`) against the Electron ABI; expect C++ compiler output.
+On Windows, `postinstall` rebuilds `stormlib-node` against the Electron ABI;
+expect C++ compiler output. macOS skips that Windows-only native build.
 
 ### Run in development
 

@@ -55,10 +55,16 @@ const ModRow = ({ row }: { row: ModRowStatus }) => {
 			<CheckboxInput
 				value={row.enabled}
 				setValue={v => toggle.mutate({ id: row.id, enabled: v })}
+				disabled={!!row.unsupportedReason}
 				className="justify-self-center"
 			/>
 			<div className="flex items-center gap-2">
-				<p className="s1 text-blueGray">{row.description}</p>
+				<p
+					className="s1 text-blueGray"
+					title={row.unsupportedReason}
+				>
+					{row.unsupportedReason ?? row.description}
+				</p>
 				<TextButton
 					icon={ExternalLink}
 					size={14}
@@ -85,13 +91,14 @@ const CustomRow = ({ row }: { row: CustomMod }) => {
 			<CheckboxInput
 				value={row.enabled}
 				setValue={v => toggle.mutate({ name: row.name, enabled: v })}
+				disabled={!!row.unsupportedReason}
 				className="justify-self-center"
 			/>
 		</>
 	);
 };
 
-const AddDllButton = () => {
+const AddDllButton = ({ disabledReason }: { disabledReason?: string }) => {
 	const t = useT();
 	const pick = api.general.filePicker.useMutation();
 	const add = api.mods.addCustomDll.useMutation();
@@ -115,6 +122,8 @@ const AddDllButton = () => {
 			<TextButton
 				onClick={onClick}
 				loading={pick.isLoading || add.isLoading}
+				disabled={!!disabledReason}
+				title={disabledReason}
 				className="text-green"
 			>
 				{t('mods.addDll')}
@@ -242,8 +251,15 @@ const ModsTab = () => {
 				<hr />
 				<div className="flex items-baseline justify-between gap-2">
 					<h4 className="tw-color">{t('mods.yourDlls')}</h4>
-					<AddDllButton />
+					<AddDllButton
+						disabledReason={status?.dllInjectionUnsupportedReason}
+					/>
 				</div>
+				{status?.dllInjectionUnsupportedReason && (
+					<p className="s1 text-blueGray">
+						{status.dllInjectionUnsupportedReason}
+					</p>
+				)}
 				{status?.custom?.length ? (
 					<div className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1">
 						{status.custom.map(c => (

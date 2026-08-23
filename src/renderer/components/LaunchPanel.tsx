@@ -10,6 +10,7 @@ import { useT } from '~renderer/i18n';
 import Button from './styled/Button';
 import DialogButton from './styled/DialogButton';
 import ClientDirDialog from './ClientDirDialog';
+import TextButton from './styled/TextButton';
 
 const formatDuration = (seconds: number) => {
 	const s = Math.max(0, Math.round(seconds));
@@ -63,6 +64,8 @@ const LaunchPanel = () => {
 	});
 
 	const { data: pref } = api.preferences.get.useQuery();
+	const { data: runtime } = api.general.runtime.useQuery();
+	const openLink = api.general.openLink.useMutation();
 
 	const [modsStatus, setModsStatus] = useState<ModsStatus>();
 	api.mods.observe.useSubscription(undefined, {
@@ -230,10 +233,46 @@ const LaunchPanel = () => {
 			)
 		}
 	};
+	const wineDownloadUrl =
+		runtime?.kind === 'wine' ? runtime.downloadUrl : undefined;
+	const aria2DownloadUrl =
+		runtime?.kind === 'wine' ? runtime.aria2DownloadUrl : undefined;
 
 	return (
 		<div className="flex gap-3">
 			<div className="flex flex-grow flex-col justify-end gap-3">
+				{runtime?.kind === 'wine' && !runtime.available && (
+					<p className="s1 -mb-2 text-orange">
+						{runtime.executable && runtime.rosettaAvailable === false ? (
+							'Rosetta 2 is required to run the 32-bit game client.'
+						) : (
+							<>
+								Free Wine Staging is required.{' '}
+								{wineDownloadUrl && (
+									<TextButton
+										onClick={() => openLink.mutate(wineDownloadUrl)}
+										className="inline !p-0 text-warmGreen"
+									>
+										Download Wine
+									</TextButton>
+								)}
+							</>
+						)}
+					</p>
+				)}
+				{runtime?.kind === 'wine' && !runtime.aria2Available && (
+					<p className="s1 -mb-2 text-orange">
+						Native aria2 is required for game downloads.{' '}
+						{aria2DownloadUrl && (
+							<TextButton
+								onClick={() => openLink.mutate(aria2DownloadUrl)}
+								className="inline !p-0 text-warmGreen"
+							>
+								Install aria2
+							</TextButton>
+						)}
+					</p>
+				)}
 				{props[status.state].helperText ??
 					(status.message && (
 						<p className="s1 -mb-2 text-blueGray">{status.message}</p>

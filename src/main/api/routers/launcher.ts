@@ -1,5 +1,4 @@
 import path from 'path';
-import { spawn } from 'child_process';
 
 import fs from 'fs-extra';
 import Logger from 'electron-log/main';
@@ -7,7 +6,8 @@ import Logger from 'electron-log/main';
 import Preferences from '~main/modules/preferences';
 import Mods from '~main/modules/mods';
 import { mainWindow } from '~main/index';
-import Updater, { isGameRunning } from '~main/modules/updater';
+import Updater from '~main/modules/updater';
+import { isGameRunning, spawnGame } from '~main/modules/gameRuntime';
 import {
 	patchConfig,
 	patchExecutable,
@@ -111,15 +111,12 @@ export const launcherRouter = createTRPCRouter({
 			Logger.log(
 				useLoader ? 'Launching via VanillaFixes...' : `Launching ${exePath}...`
 			);
-			const child = useLoader
-				? spawn(loaderPath, ['WoW.exe'], {
-						cwd: clientDir,
-						detached: !minimizeToTrayOnPlay
-				  })
-				: spawn(exePath, {
-						cwd: clientDir,
-						detached: !minimizeToTrayOnPlay
-				  });
+			const child = spawnGame({
+				clientDir,
+				executable: useLoader ? loaderPath : exePath,
+				args: useLoader ? ['WoW.exe'] : [],
+				detached: !minimizeToTrayOnPlay
+			});
 
 			try {
 				await new Promise<void>((resolve, reject) => {

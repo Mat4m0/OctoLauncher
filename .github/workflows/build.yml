@@ -32,3 +32,28 @@ jobs:
         run: npm run build
         env:
           ELECTRON_RUN_AS_NODE: ''
+
+  build-macos:
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install JS dependencies without Windows native addons
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Download Electron binary
+        run: node node_modules/electron/install.js
+
+      - name: Typecheck and build bundles
+        run: npm run dist:mac -- --dir
+        env:
+          ELECTRON_RUN_AS_NODE: ''
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'

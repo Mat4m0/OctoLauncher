@@ -30,13 +30,21 @@ files:
   - '!**/node_modules/**/*.{vcxproj,vcxproj.filters}'
 npmRebuild: false
 electronLanguages: en
-extraResources:
-  - from: resources/aria2c.exe
-    to: aria2c.exe
 win:
   artifactName: ${productName}.${ext}
+  extraResources:
+    - from: resources/aria2c.exe
+      to: aria2c.exe
   target:
     - nsis
+mac:
+  artifactName: ${productName}-${arch}.${ext}
+  category: public.app-category.games
+  files:
+    - '!node_modules/stormlib-node/**'
+  target:
+    - dmg
+    - zip
 nsis:
   # versioned: differential updates need the old blockmap to stay fetchable
   artifactName: ${productName}_Installer-${version}.${ext}

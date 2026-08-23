@@ -58,6 +58,9 @@ const KNOWN_DLLS = new Set(
 const AV_ERROR =
 	'Windows Defender blocked this download. Use "Allow through antivirus" and apply again.';
 
+const MAC_DLL_UNSUPPORTED =
+	'Injected DLL mods are not compatible with VanillaFixes under Wine on macOS.';
+
 // pinned dxvk-gplasync v2.7.1-1 x32 d3d9.dll (same build the client ships)
 const DXVK_DLL_SHA256 =
 	'a2cd6841e102f37189527c118ec416fa5071ac4d3120762973d9a0c6c5fd067e';
@@ -89,15 +92,21 @@ export type ModRowStatus = {
 	state: 'idle' | 'downloading' | 'installing' | 'uninstalling' | 'error';
 	progress?: number;
 	error?: string;
+	unsupportedReason?: string;
 };
 
-export type CustomMod = { name: string; enabled: boolean };
+export type CustomMod = {
+	name: string;
+	enabled: boolean;
+	unsupportedReason?: string;
+};
 
 export type ModsStatus = {
 	state: 'verifying' | 'idle' | 'busy';
 	dirty: boolean;
 	mods: ModRowStatus[];
 	custom: CustomMod[];
+	dllInjectionUnsupportedReason?: string;
 	// enabled mods whose files are missing (AV quarantine or incomplete sync)
 	missingFiles: string[];
 };
@@ -108,6 +117,8 @@ class ModsClass extends Observable<ModsStatus> {
 		dirty: false,
 		mods: [],
 		custom: [],
+		dllInjectionUnsupportedReason:
+			process.platform === 'darwin' ? MAC_DLL_UNSUPPORTED : undefined,
 		missingFiles: []
 	};
 
@@ -120,8 +131,17 @@ class ModsClass extends Observable<ModsStatus> {
 		return this._value;
 	}
 
+	#unsupportedReason(id: ModId) {
+		if (process.platform === 'darwin' && id === 'dxvk')
+			return 'Wine provides Direct3D translation on macOS; this Windows DXVK build would conflict with it.';
+		if (process.platform === 'darwin' && getMod(id)?.registerInDllsTxt)
+			return MAC_DLL_UNSUPPORTED;
+		return undefined;
+	}
+
 	#initialRow(m: ModEntry): ModRowStatus {
 		const state = Preferences.data?.mods?.[m.id];
+		const unsupportedReason = this.#unsupportedReason(m.id);
 		return {
 			id: m.id,
 			name: m.name,
@@ -129,11 +149,12 @@ class ModsClass extends Observable<ModsStatus> {
 			repoUrl: m.repoUrl,
 			recommended: !!m.recommended,
 			requires: m.requires ?? [],
-			enabled: !!state?.enabled,
+			enabled: !!state?.enabled && !unsupportedReason,
 			ignoreUpdates: !!state?.ignoreUpdates,
 			installedVersion: state?.installedVersion,
 			latestVersion: m.version,
-			state: 'idle'
+			state: 'idle',
+			unsupportedReason
 		};
 	}
 
@@ -149,7 +170,7 @@ class ModsClass extends Observable<ModsStatus> {
 	#computeDirty(): boolean {
 		if (this.#customDesired.size > 0) return true;
 		return this._value.mods.some(r => {
-			const wantInstalled = r.enabled;
+			const wantInstalled = r.enabled && !r.unsupportedReason;
 			const isInstalled = !!r.installedVersion;
 			if (wantInstalled !== isInstalled) return true;
 			if (
@@ -168,8 +189,21 @@ class ModsClass extends Observable<ModsStatus> {
 			dirty: false,
 			mods: MODS.filter(m => !m.disabled).map(m => this.#initialRow(m)),
 			custom: this._value.custom,
+			dllInjectionUnsupportedReason:
+				process.platform === 'darwin' ? MAC_DLL_UNSUPPORTED : undefined,
 			missingFiles: []
 		};
+	}
+
+	async #disableUnsupportedDllInjection(clientDir: string) {
+		if (process.platform !== 'darwin') return;
+		const enabledDlls = await listDlls(clientDir);
+		for (const name of enabledDlls) await removeDll(clientDir, name);
+		if (enabledDlls.length)
+			Logger.info(
+				`Disabled ${enabledDlls.length} injected DLL mod(s) unsupported by Wine on macOS`
+			);
+		this.#customDesired.clear();
 	}
 
 	// DLLs in the client dir we neither ship nor own
@@ -198,9 +232,13 @@ class ModsClass extends Observable<ModsStatus> {
 			const lc = name.toLowerCase();
 			return {
 				name,
-				enabled: this.#customDesired.has(lc)
-					? !!this.#customDesired.get(lc)
-					: !!this.#customApplied.get(lc)
+				enabled:
+					process.platform !== 'darwin' &&
+					(this.#customDesired.has(lc)
+						? !!this.#customDesired.get(lc)
+						: !!this.#customApplied.get(lc)),
+				unsupportedReason:
+					process.platform === 'darwin' ? MAC_DLL_UNSUPPORTED : undefined
 			};
 		});
 	}
@@ -288,6 +326,7 @@ class ModsClass extends Observable<ModsStatus> {
 		const clientDir = Preferences.data?.clientDir;
 
 		if (clientDir) {
+			await this.#disableUnsupportedDllInjection(clientDir);
 			await this.#syncPreferredMonitor(clientDir);
 		}
 
@@ -298,11 +337,21 @@ class ModsClass extends Observable<ModsStatus> {
 			if (m.disabled) continue;
 
 			const state = Preferences.data?.mods?.[m.id];
+			const unsupportedReason = this.#unsupportedReason(m.id);
+			if (unsupportedReason && state?.enabled !== false)
+				await this.#savePref(m.id, {
+					enabled: false,
+					installedVersion: state?.installedVersion,
+					installedFiles: state?.installedFiles ?? [],
+					ignoreUpdates: state?.ignoreUpdates ?? false
+				});
 			let installedVersion = state?.installedVersion;
 
 			// torrent mode: DLLs ship in the client; a missing file goes to `missing`, not dirty
 			if (isTorrentMode()) {
-				const enabled = state?.enabled ?? DEFAULT_ENABLED_MODS.includes(m.id);
+				const enabled =
+					!unsupportedReason &&
+					(state?.enabled ?? DEFAULT_ENABLED_MODS.includes(m.id));
 				// dxvk loads by file presence and torrent piece spillover can
 				// corrupt it; hash-verify every state: park/restore verified
 				// copies only, delete junk, re-download the pin when needed
@@ -392,7 +441,7 @@ class ModsClass extends Observable<ModsStatus> {
 			this.#patchRow(m.id, {
 				installedVersion,
 				latestVersion: m.version,
-				enabled: !!state?.enabled,
+				enabled: !!state?.enabled && !unsupportedReason,
 				ignoreUpdates: !!state?.ignoreUpdates
 			});
 		}
@@ -418,6 +467,7 @@ class ModsClass extends Observable<ModsStatus> {
 	async toggleCustom(name: string, enabled: boolean) {
 		const clientDir = Preferences.data?.clientDir;
 		if (!clientDir) return;
+		if (enabled && process.platform === 'darwin') return;
 		// stage; matching dlls.txt clears the pending change
 		const lc = name.toLowerCase();
 		if (enabled === !!this.#customApplied.get(lc))
@@ -434,6 +484,8 @@ class ModsClass extends Observable<ModsStatus> {
 	async addCustomDll(
 		srcPath: string
 	): Promise<{ ok: boolean; error?: string }> {
+		if (process.platform === 'darwin')
+			return { ok: false, error: MAC_DLL_UNSUPPORTED };
 		const clientDir = Preferences.data?.clientDir;
 		if (!clientDir) return { ok: false, error: 'No game folder is set.' };
 		const name = path.basename(srcPath);
@@ -464,6 +516,7 @@ class ModsClass extends Observable<ModsStatus> {
 	}
 
 	async toggle(id: ModId, enabled: boolean) {
+		if (enabled && this.#unsupportedReason(id)) return;
 		const cur = Preferences.data?.mods?.[id];
 		await this.#savePref(id, {
 			enabled,
@@ -543,7 +596,7 @@ class ModsClass extends Observable<ModsStatus> {
 			const m = getMod(row.id);
 			if (!m) continue;
 
-			const wantInstalled = row.enabled;
+			const wantInstalled = row.enabled && !row.unsupportedReason;
 			const isInstalled = !!row.installedVersion;
 			const updateAvailable =
 				isInstalled &&

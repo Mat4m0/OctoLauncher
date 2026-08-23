@@ -16,6 +16,7 @@ type Props = { close: () => void };
 const ClientDirDialog = ({ close }: Props) => {
 	const t = useT();
 	const { data: pref } = api.preferences.get.useQuery();
+	const { data: runtime } = api.general.runtime.useQuery();
 	const setPref = api.preferences.set.useMutation();
 	const isValidClientDir = api.preferences.isValidClientDir.useQuery(
 		pref?.clientDir,
@@ -51,8 +52,11 @@ const ClientDirDialog = ({ close }: Props) => {
 	}, [chosen]);
 
 	useEffect(() => {
-		pref && reset(pref);
-	}, [reset, pref]);
+		if (!pref) return;
+		reset({
+			clientDir: pref.clientDir ?? runtime?.recommendedClientDir ?? ''
+		});
+	}, [reset, pref, runtime?.recommendedClientDir]);
 
 	if (pref?.isPortable) {
 		return (

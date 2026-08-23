@@ -1,15 +1,10 @@
 import path from 'node:path';
 
 import fs from 'fs-extra';
-import {
-	SFileOpenArchive,
-	SFileCloseArchive,
-	SFileHasFile
-} from 'stormlib-node';
-import { STREAM_FLAG } from 'stormlib-node/dist/enums';
 import Logger from 'electron-log/main';
 
 import Preferences from './preferences';
+import { StormLib, STREAM_READ_ONLY } from './stormLib';
 
 // old installs may have a copied patch-<letter>.mpq that overrides patch-5; sweep by marker
 const ALL_LETTERS = 'BCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
@@ -21,14 +16,20 @@ const patchFile = (dataDir: string, letter: string) =>
 const isOurPatch = (mpqPath: string): boolean => {
 	if (!fs.existsSync(mpqPath)) return false;
 	try {
-		const h = SFileOpenArchive(mpqPath, STREAM_FLAG.READ_ONLY);
+		const h = StormLib.SFileOpenArchive(mpqPath, STREAM_READ_ONLY);
 		try {
-			return SFileHasFile(h, MARKER);
+			return StormLib.SFileHasFile(h, MARKER);
 		} finally {
-			SFileCloseArchive(h);
+			StormLib.SFileCloseArchive(h);
 		}
 	} catch {
-		return false;
+		if (process.platform !== 'darwin') return false;
+		const tracked = Preferences.data.localePatchLetter;
+		return (
+			!!tracked &&
+			path.resolve(mpqPath) ===
+				path.resolve(patchFile(path.dirname(mpqPath), tracked))
+		);
 	}
 };
 

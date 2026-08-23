@@ -10,10 +10,19 @@ import { mapPort, type PortMapping } from './upnp';
 
 const TORRENT_NAME = 'client';
 
-const bin = () =>
+const bundledWindowsBin = () =>
 	app.isPackaged
 		? path.join(process.resourcesPath, 'aria2c.exe')
 		: path.join(app.getAppPath(), 'resources', 'aria2c.exe');
+
+const macAria2Candidates = ['/opt/homebrew/bin/aria2c', '/usr/local/bin/aria2c'];
+
+export const findAria2 = () =>
+	process.platform === 'darwin'
+		? macAria2Candidates.find(fs.existsSync)
+		: bundledWindowsBin();
+
+const bin = () => findAria2() ?? macAria2Candidates[0];
 
 type SyncOpts = {
 	torrentUrl: string;
@@ -48,7 +57,11 @@ const ensureJunction = async (clientDir: string): Promise<string> => {
 		}
 		await fs.remove(link);
 	} catch {}
-	await fs.symlink(target, link, 'junction');
+	await fs.symlink(
+		target,
+		link,
+		process.platform === 'win32' ? 'junction' : 'dir'
+	);
 	return staging;
 };
 

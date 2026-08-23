@@ -42,6 +42,7 @@ type Props = { close: () => void };
 const PreferencesDialog = ({ close }: Props) => {
 	const t = useT();
 	const { data: pref } = api.preferences.get.useQuery();
+	const { data: runtime } = api.general.runtime.useQuery();
 	const setPref = api.preferences.set.useMutation();
 
 	const verify = api.updater.verify.useMutation();
@@ -168,31 +169,37 @@ const PreferencesDialog = ({ close }: Props) => {
 					>
 						{t('prefs.openLogFile')}
 					</TextButton>
-					<div className="flex items-start">
-						<TextButton
-							icon={ShieldAlert}
-							onClick={() => addExclusion.mutateAsync()}
-							loading={addExclusion.isLoading}
-							className="!items-start text-left text-orange"
-						>
-							{t('prefs.allowThroughAntivirus')}
-						</TextButton>
-						{/* sits on the label's first line even when a locale wraps it */}
-						<TextButton
-							icon={HelpCircle}
-							size={14}
-							onClick={() => window.dispatchEvent(new Event('av-help'))}
-							title={t('av.whatAllowDoesTitle')}
-							className="mt-[14px] !p-0 text-yellow hocus:!text-yellow"
-						/>
-					</div>
-					{addExclusion.data?.ok === true && (
-						<span className="s1 text-warmGreen">
-							{t('prefs.exclusionAdded')}
-						</span>
-					)}
-					{addExclusion.data?.ok === false && (
-						<span className="s1 text-orange">{addExclusion.data.error}</span>
+					{runtime?.platform === 'win32' && (
+						<>
+							<div className="flex items-start">
+								<TextButton
+									icon={ShieldAlert}
+									onClick={() => addExclusion.mutateAsync()}
+									loading={addExclusion.isLoading}
+									className="!items-start text-left text-orange"
+								>
+									{t('prefs.allowThroughAntivirus')}
+								</TextButton>
+								{/* sits on the label's first line even when a locale wraps it */}
+								<TextButton
+									icon={HelpCircle}
+									size={14}
+									onClick={() => window.dispatchEvent(new Event('av-help'))}
+									title={t('av.whatAllowDoesTitle')}
+									className="mt-[14px] !p-0 text-yellow hocus:!text-yellow"
+								/>
+							</div>
+							{addExclusion.data?.ok === true && (
+								<span className="s1 text-warmGreen">
+									{t('prefs.exclusionAdded')}
+								</span>
+							)}
+							{addExclusion.data?.ok === false && (
+								<span className="s1 text-orange">
+									{addExclusion.data.error}
+								</span>
+							)}
+						</>
 					)}
 				</div>
 

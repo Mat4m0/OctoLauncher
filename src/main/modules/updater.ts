@@ -1,6 +1,5 @@
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { exec } from 'node:child_process';
 import os from 'node:os';
 
 import { app } from 'electron';
@@ -27,6 +26,7 @@ import {
 } from '~main/modules/aria2';
 
 import { healRealmlist } from '~main/modules/patcher';
+import { isGameRunning } from '~main/modules/gameRuntime';
 
 import Preferences from './preferences';
 import Observable from './observable';
@@ -81,29 +81,6 @@ const ownedDataArchives = async (): Promise<Set<string>> => {
 		return new Set();
 	}
 };
-
-export const isGameRunning = (executablePath: string) =>
-	os.platform() === 'win32'
-		? new Promise<boolean>(resolve => {
-				const exeName = path.basename(executablePath);
-				exec(
-					`tasklist /FI "IMAGENAME eq ${exeName}" /FO CSV /NH`,
-					(error, stdout) => {
-						if (error) {
-							Logger.warn(
-								`tasklist probe for "${exeName}" failed; assuming game ` +
-									`is not running. Error: ${error.message}`
-							);
-							resolve(false);
-							return;
-						}
-						resolve(
-							stdout.toLowerCase().includes(`"${exeName.toLowerCase()}"`)
-						);
-					}
-				);
-		  })
-		: false;
 
 type UpdaterState =
 	| 'verifying'
