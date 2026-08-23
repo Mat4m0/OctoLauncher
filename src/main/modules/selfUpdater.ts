@@ -41,6 +41,15 @@ class SelfUpdaterClass extends Observable<SelfUpdaterStatus> {
 		if (this.#initialized) return;
 		this.#initialized = true;
 
+		if (process.platform !== 'win32') {
+			Logger.info('[selfUpdater] only the Windows update channel is published, skipping');
+			this.status = {
+				state: 'unavailable',
+				currentVersion: app.getVersion()
+			};
+			return;
+		}
+
 		if (is.dev) {
 			Logger.info('[selfUpdater] dev mode, skipping');
 			return;

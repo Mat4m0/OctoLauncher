@@ -90,11 +90,13 @@ abstract class Preferences {
 		if (!this.#freshInstall || Object.keys(data.mods).length) return data;
 
 		const mods = { ...data.mods };
-		for (const id of DEFAULT_ENABLED_MODS)
+		for (const id of DEFAULT_ENABLED_MODS) {
+			if (process.platform === 'darwin' && id === 'dxvk') continue;
 			mods[id] = { enabled: true, installedFiles: [], ignoreUpdates: false };
+		}
 
 		Logger.info(
-			`Fresh install: enabling ${DEFAULT_ENABLED_MODS.join(', ')} by default`
+			`Fresh install: enabling ${Object.keys(mods).join(', ')} by default`
 		);
 		return { ...data, mods };
 	}

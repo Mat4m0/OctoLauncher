@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 import Mods from '~main/modules/mods';
 import Preferences from '~main/modules/preferences';
-import { isGameRunning } from '~main/modules/updater';
+import { isGameRunning } from '~main/modules/gameRuntime';
 import { ModIdSchema } from '~common/mods';
 
 import { createTRPCRouter, publicProcedure } from '../trpc';

@@ -16,5 +16,6 @@ Tools/launcher/node/
 .DS_Store
 Thumbs.db
 
-scripts/
+scripts/*
+!scripts/postinstall.cjs
 hooks/

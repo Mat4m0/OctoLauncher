@@ -41,6 +41,7 @@ type Props = { close: () => void };
 const PreferencesDialog = ({ close }: Props) => {
 	const t = useT();
 	const { data: pref } = api.preferences.get.useQuery();
+	const { data: runtime } = api.general.runtime.useQuery();
 	const setPref = api.preferences.set.useMutation();
 
 	const verify = api.updater.verify.useMutation();
@@ -160,21 +161,27 @@ const PreferencesDialog = ({ close }: Props) => {
 					>
 						{t('prefs.openLogFile')}
 					</TextButton>
-					<TextButton
-						icon={ShieldAlert}
-						onClick={() => addExclusion.mutateAsync()}
-						loading={addExclusion.isLoading}
-						className="!items-start text-left text-orange"
-					>
-						{t('prefs.allowThroughAntivirus')}
-					</TextButton>
-					{addExclusion.data?.ok === true && (
-						<span className="s1 text-warmGreen">
-							{t('prefs.exclusionAdded')}
-						</span>
-					)}
-					{addExclusion.data?.ok === false && (
-						<span className="s1 text-orange">{addExclusion.data.error}</span>
+					{runtime?.platform === 'win32' && (
+						<>
+							<TextButton
+								icon={ShieldAlert}
+								onClick={() => addExclusion.mutateAsync()}
+								loading={addExclusion.isLoading}
+								className="!items-start text-left text-orange"
+							>
+								{t('prefs.allowThroughAntivirus')}
+							</TextButton>
+							{addExclusion.data?.ok === true && (
+								<span className="s1 text-warmGreen">
+									{t('prefs.exclusionAdded')}
+								</span>
+							)}
+							{addExclusion.data?.ok === false && (
+								<span className="s1 text-orange">
+									{addExclusion.data.error}
+								</span>
+							)}
+						</>
 					)}
 				</div>
 

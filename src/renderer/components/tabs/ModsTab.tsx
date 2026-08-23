@@ -51,10 +51,16 @@ const ModRow = ({ row }: { row: ModRowStatus }) => {
 			<CheckboxInput
 				value={row.enabled}
 				setValue={v => toggle.mutate({ id: row.id, enabled: v })}
+				disabled={!!row.unsupportedReason}
 				className="justify-self-center"
 			/>
 			<div className="flex items-center gap-2">
-				<p className="s1 text-blueGray">{row.description}</p>
+				<p
+					className="s1 text-blueGray"
+					title={row.unsupportedReason}
+				>
+					{row.unsupportedReason ?? row.description}
+				</p>
 				<TextButton
 					icon={ExternalLink}
 					size={14}

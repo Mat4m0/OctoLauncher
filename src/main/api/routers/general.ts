@@ -6,11 +6,13 @@ import { mainWindow } from '~main/index';
 import Preferences from '~main/modules/preferences';
 import { addDefenderExclusions } from '~main/modules/defender';
 import { detectHardware, recommendFarClip } from '~main/modules/hardware';
+import { getGameRuntimeStatus } from '~main/modules/gameRuntime';
 
 import { createTRPCRouter, publicProcedure } from '../trpc';
 
 export const generalRouter = createTRPCRouter({
 	appVersion: publicProcedure.query(() => app.getVersion()),
+	runtime: publicProcedure.query(() => getGameRuntimeStatus()),
 	hardware: publicProcedure.query(() => {
 		const hardware = Preferences.data.hardware ?? null;
 		return { hardware, recommendedFarClip: recommendFarClip(hardware) };

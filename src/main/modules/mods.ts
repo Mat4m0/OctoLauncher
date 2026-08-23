@@ -38,6 +38,7 @@ export type ModRowStatus = {
 	state: 'idle' | 'downloading' | 'installing' | 'uninstalling' | 'error';
 	progress?: number;
 	error?: string;
+	unsupportedReason?: string;
 };
 
 export type ModsStatus = {
@@ -53,12 +54,19 @@ class ModsClass extends Observable<ModsStatus> {
 		mods: []
 	};
 
+	#unsupportedReason(id: ModId) {
+		if (process.platform === 'darwin' && id === 'dxvk')
+			return 'Wine provides the graphics translation on macOS; this Windows DXVK build would conflict with it.';
+		return undefined;
+	}
+
 	get status(): ModsStatus {
 		return this._value;
 	}
 
 	#initialRow(m: ModEntry): ModRowStatus {
 		const state = Preferences.data?.mods?.[m.id];
+		const unsupportedReason = this.#unsupportedReason(m.id);
 		return {
 			id: m.id,
 			name: m.name,
@@ -66,11 +74,12 @@ class ModsClass extends Observable<ModsStatus> {
 			repoUrl: m.repoUrl,
 			recommended: !!m.recommended,
 			requires: m.requires ?? [],
-			enabled: !!state?.enabled,
+			enabled: !!state?.enabled && !unsupportedReason,
 			ignoreUpdates: !!state?.ignoreUpdates,
 			installedVersion: state?.installedVersion,
 			latestVersion: m.version,
-			state: 'idle'
+			state: 'idle',
+			unsupportedReason
 		};
 	}
 
@@ -182,6 +191,8 @@ class ModsClass extends Observable<ModsStatus> {
 		for (const m of MODS) {
 			const state = Preferences.data?.mods?.[m.id];
 			let installedVersion = state?.installedVersion;
+			if (state?.enabled && this.#unsupportedReason(m.id))
+				await this.#savePref(m.id, { ...state, enabled: false });
 
 			if (clientDir && installedVersion) {
 				const filesPresent = await Promise.all(
@@ -209,7 +220,7 @@ class ModsClass extends Observable<ModsStatus> {
 			this.#patchRow(m.id, {
 				installedVersion,
 				latestVersion: m.version,
-				enabled: !!state?.enabled,
+				enabled: !!state?.enabled && !this.#unsupportedReason(m.id),
 				ignoreUpdates: !!state?.ignoreUpdates
 			});
 		}
@@ -223,6 +234,7 @@ class ModsClass extends Observable<ModsStatus> {
 	}
 
 	async toggle(id: ModId, enabled: boolean) {
+		if (enabled && this.#unsupportedReason(id)) return;
 		const cur = Preferences.data?.mods?.[id];
 		await this.#savePref(id, {
 			enabled,
@@ -270,7 +282,7 @@ class ModsClass extends Observable<ModsStatus> {
 			const m = getMod(row.id);
 			if (!m) continue;
 
-			const wantInstalled = row.enabled;
+			const wantInstalled = row.enabled && !row.unsupportedReason;
 			const isInstalled = !!row.installedVersion;
 			const updateAvailable =
 				isInstalled &&

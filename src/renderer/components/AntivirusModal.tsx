@@ -12,6 +12,7 @@ const DETECTION = 'Trojan:Win32/Vigorf.A';
 
 const AntivirusModal = () => {
 	const t = useT();
+	const { data: runtime } = api.general.runtime.useQuery();
 	const [status, setStatus] = useState<ModsStatus>();
 	api.mods.observe.useSubscription(undefined, { onData: setStatus });
 
@@ -37,6 +38,7 @@ const AntivirusModal = () => {
 	}, [blockedKey]);
 
 	const names = blockedKey ? blockedKey.split(',') : [];
+	if (runtime?.platform !== 'win32') return null;
 
 	return createPortal(
 		<dialog

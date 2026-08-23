@@ -1,32 +1,10 @@
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { exec } from 'node:child_process';
 import os from 'node:os';
 
 import { app } from 'electron';
 import fetch from 'node-fetch';
 import fs from 'fs-extra';
-import {
-	SFileOpenArchive,
-	type HANDLE,
-	SFileHasFile,
-	SFileCloseArchive,
-	SFileOpenFileEx,
-	SFileReadFile,
-	SFileGetFileSize,
-	SFileCloseFile,
-	SFileCreateFile,
-	SFileWriteFile,
-	SFileFinishFile,
-	SFileFlushArchive,
-	SFileRemoveFile,
-	SFileCompactArchive
-} from 'stormlib-node';
-import {
-	MPQ_COMPRESSION,
-	MPQ_FILE,
-	STREAM_FLAG
-} from 'stormlib-node/dist/enums';
 import Logger from 'electron-log/main';
 
 import {
@@ -39,9 +17,17 @@ import {
 import { mainWindow } from '~main/index';
 import { patchExecutable } from '~main/modules/patcher';
 import { getClientVersion } from '~main/utils';
+import { isGameRunning } from '~main/modules/gameRuntime';
 
 import Preferences from './preferences';
 import Observable from './observable';
+import {
+	MPQ_COMPRESSION_ZLIB,
+	MPQ_FILE_COMPRESS,
+	StormLib,
+	STREAM_READ_ONLY,
+	type StormHandle
+} from './stormLib';
 
 const getAvailableDiskSpace = async (probePath?: string): Promise<number> => {
 	const target =
@@ -130,29 +116,6 @@ const getManifestItem = (
 		rest
 	);
 };
-
-export const isGameRunning = (executablePath: string) =>
-	os.platform() === 'win32'
-		? new Promise<boolean>(resolve => {
-				const exeName = path.basename(executablePath);
-				exec(
-					`tasklist /FI "IMAGENAME eq ${exeName}" /FO CSV /NH`,
-					(error, stdout) => {
-						if (error) {
-							Logger.warn(
-								`tasklist probe for "${exeName}" failed; assuming game ` +
-									`is not running. Error: ${error.message}`
-							);
-							resolve(false);
-							return;
-						}
-						resolve(
-							stdout.toLowerCase().includes(`"${exeName.toLowerCase()}"`)
-						);
-					}
-				);
-		  })
-		: false;
 
 const toUrlPath = (p: string) =>
 	p.split(path.sep).map(encodeURIComponent).join('/');
@@ -442,13 +405,13 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 			clientPath,
 			...m
 		}: { clientPath: string } & (
-			| { hMpq: HANDLE; mpqPath: string[] }
+			| { hMpq: StormHandle; mpqPath: string[] }
 			| { hMpq?: never }
 		),
 		...filePath: string[]
 	) {
 		if (m.hMpq) {
-			if (!SFileHasFile(m.hMpq, path.join(...filePath))) {
+			if (!StormLib.SFileHasFile(m.hMpq, path.join(...filePath))) {
 				nestedSet(this.#cache, filePath, undefined);
 				return undefined;
 			}
@@ -456,13 +419,13 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 
 			if (c?.[0]) return c[0];
 
-			const hFile = SFileOpenFileEx(m.hMpq, path.join(...filePath), 0);
+			const hFile = StormLib.SFileOpenFileEx(m.hMpq, path.join(...filePath), 0);
 
 			try {
-				const fileSize = Number(SFileGetFileSize(hFile).toString());
+				const fileSize = Number(StormLib.SFileGetFileSize(hFile).toString());
 
 				const buffer = new ArrayBuffer(fileSize);
-				if (fileSize > 0) SFileReadFile(hFile, buffer);
+				if (fileSize > 0) StormLib.SFileReadFile(hFile, buffer);
 
 				const newHash = crypto
 					.createHash('sha1')
@@ -473,7 +436,7 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 				nestedSet(this.#cache, [...m.mpqPath, ...filePath], { [0]: newHash });
 				return newHash;
 			} finally {
-				SFileCloseFile(hFile);
+				StormLib.SFileCloseFile(hFile);
 			}
 		}
 
@@ -575,7 +538,7 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 			let i = 0;
 
 			const buildMpqTree = async (
-				hMpq: HANDLE,
+				hMpq: StormHandle,
 				mpqPath: string[],
 				...filePath: string[]
 			): Promise<FileManifest | undefined> => {
@@ -668,9 +631,9 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 					}
 
 					try {
-						const hMpq = SFileOpenArchive(
+						const hMpq = StormLib.SFileOpenArchive(
 							path.join(clientPath, ...patchPath),
-							STREAM_FLAG.READ_ONLY
+							STREAM_READ_ONLY
 						);
 
 						try {
@@ -681,7 +644,7 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 							).filter(isNotUndef);
 							return !files.length ? undefined : { ...item, files };
 						} finally {
-							SFileCloseArchive(hMpq);
+							StormLib.SFileCloseArchive(hMpq);
 						}
 					} catch (e) {
 						Logger.warn(
@@ -917,7 +880,7 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 			};
 
 			const iterateMpqTree = async (
-				hMpq: HANDLE,
+				hMpq: StormHandle,
 				mpqPath: string[],
 				...filePath: string[]
 			) => {
@@ -925,8 +888,8 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 				if (!item) return undefined;
 
 				if (item.type === 'del') {
-					if (SFileHasFile(hMpq, path.join(...filePath)))
-						SFileRemoveFile(hMpq, path.join(...filePath));
+					if (StormLib.SFileHasFile(hMpq, path.join(...filePath)))
+						StormLib.SFileRemoveFile(hMpq, path.join(...filePath));
 					nestedSet(this.#cache, [...mpqPath, ...filePath], undefined);
 					return;
 				}
@@ -958,21 +921,21 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 					}
 				);
 
-				if (SFileHasFile(hMpq, path.join(...filePath)))
-					SFileRemoveFile(hMpq, path.join(...filePath));
+				if (StormLib.SFileHasFile(hMpq, path.join(...filePath)))
+					StormLib.SFileRemoveFile(hMpq, path.join(...filePath));
 
-				const hFile = SFileCreateFile(
+				const hFile = StormLib.SFileCreateFile(
 					hMpq,
 					path.join(...filePath),
 					0,
 					data.byteLength,
 					0,
-					MPQ_FILE.COMPRESS
+					MPQ_FILE_COMPRESS
 				);
 				try {
-					SFileWriteFile(hFile, data, MPQ_COMPRESSION.ZLIB);
+					StormLib.SFileWriteFile(hFile, data, MPQ_COMPRESSION_ZLIB);
 				} finally {
-					SFileFinishFile(hFile);
+					StormLib.SFileFinishFile(hFile);
 				}
 				nestedSet(this.#cache, [...mpqPath, ...filePath], undefined);
 			};
@@ -1026,14 +989,17 @@ class UpdaterClass extends Observable<UpdaterStatus> {
 							`Failed to update "${patchFile}" because it's read-only.`
 						);
 
-					const hMpq = SFileOpenArchive(path.join(clientPath, ...patchPath), 0);
+					const hMpq = StormLib.SFileOpenArchive(
+						path.join(clientPath, ...patchPath),
+						0
+					);
 					try {
 						for (const f of item.files)
 							await iterateMpqTree(hMpq, filePath, f.name);
-						SFileFlushArchive(hMpq);
-						SFileCompactArchive(hMpq);
+						StormLib.SFileFlushArchive(hMpq);
+						StormLib.SFileCompactArchive(hMpq);
 					} finally {
-						SFileCloseArchive(hMpq);
+						StormLib.SFileCloseArchive(hMpq);
 					}
 					return;
 				}
