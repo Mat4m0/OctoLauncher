@@ -138,6 +138,13 @@ export const defaultSources: AddonSource[] = [
 		description: 'Grid-like compact party/raid frames with buff/debuff, aggro, and proximity tracking'
 	},
 	{
+		git: 'https://octowow.st/git/rwang0417/OctoAI.git',
+		name: 'OctoAI',
+		branch: 'main',
+		description:
+			'Ask an AI about your own character: /octoai opens a copyable summary of gear, quests, talents, spells, and professions to paste into any AI chat'
+	},
+	{
 		git: 'https://github.com/zanthor/OG-RaidHelper.git',
 		description: 'Raid management: roles, trade distribution, soft-reserve validation'
 	},
