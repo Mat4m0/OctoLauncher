@@ -1,7 +1,8 @@
 import path from 'path';
-import { spawn } from 'child_process';
+import { spawn, type ChildProcess } from 'child_process';
 
 import fs from 'fs-extra';
+import { app } from 'electron';
 import Logger from 'electron-log/main';
 
 import Preferences from '~main/modules/preferences';
@@ -11,13 +12,25 @@ import Updater, { isGameRunning } from '~main/modules/updater';
 import {
 	patchConfig,
 	patchExecutable,
-	ensureDxvkConf
+	ensureDxvkConf,
+	restorePublicRealm
 } from '~main/modules/patcher';
 import { removeLegacyLocalePatches } from '~main/modules/localePatch';
 import { syncVanillaFixesCache } from '~main/modules/dllsTxt';
-import { stopSeeding } from '~main/modules/aria2';
+import { isClientBaseWow, stopSeeding } from '~main/modules/aria2';
 import { minimizeToTray, restoreFromTray } from '~main/modules/tray';
 import { getMod } from '~common/mods';
+import {
+	preparePrivateRoute,
+	privateRouteInUse,
+	endPrivateRoute
+} from '~main/modules/authClient';
+import {
+	resolveLaunch,
+	gameExeName,
+	loaderExeName
+} from '~main/modules/launchWrapper';
+import { isLinux } from '~main/modules/platform';
 
 import { createTRPCRouter, publicProcedure } from '../trpc';
 
@@ -35,11 +48,16 @@ const chainloaderNeeded = async (clientDir: string): Promise<boolean> => {
 	return false;
 };
 
-type StartResult = { ok: boolean; error?: string };
+type StartResult = { ok: boolean; error?: string; errorKey?: string };
 
 const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
+const RECHECK_AFTER_MS = 10 * 60_000;
+const RELEASE_CHECK_MS = 6_000;
+
 let starting = false;
+let openGames = 0;
+const privateLaunches: { clientDir: string; host: string }[] = [];
 
 export const launcherRouter = createTRPCRouter({
 	start: publicProcedure.mutation(async (): Promise<StartResult> => {
@@ -49,14 +67,17 @@ export const launcherRouter = createTRPCRouter({
 			const { cleanWdb, minimizeToTrayOnPlay, clientDir } = Preferences.data;
 			if (!clientDir) return { ok: false, error: 'No game folder is set.' };
 
-			const exePath = path.join(clientDir, 'WoW.exe');
+			const exePath = path.join(clientDir, gameExeName());
 			if (!(await fs.pathExists(exePath)))
 				return {
 					ok: false,
-					error: 'WoW.exe was not found in the game folder.'
+					error: `${gameExeName()} was not found in the game folder.`
 				};
-			if (await isGameRunning(exePath))
-				return { ok: false, error: 'WoW is already running.' };
+			const gameOpen = await isGameRunning(exePath);
+			if (gameOpen)
+				Logger.log(
+					'WoW is already open; starting another (WoW.exe and WDB left as they are)'
+				);
 
 			if (Mods.status.dirty)
 				return {
@@ -64,9 +85,33 @@ export const launcherRouter = createTRPCRouter({
 					error: 'You have unapplied mod changes. Click Apply first.'
 				};
 
+			if (
+				Updater.status.state === 'upToDate' &&
+				Date.now() - Updater.checkedAt > RECHECK_AFTER_MS
+			) {
+				const pending = await Promise.race([
+					Updater.releasePending().catch(e => {
+						Logger.warn('Release check before Play failed', e);
+						return false;
+					}),
+					delay(RELEASE_CHECK_MS).then(() => false)
+				]);
+				if (pending) {
+					Logger.log('A release came out since the last check; updating first');
+					void Updater.verify();
+					return {
+						ok: false,
+						error:
+							'A game update came out while the launcher was open. Let the launcher ' +
+							'finish checking and updating, then click Play.',
+						errorKey: 'launch.updateFirst'
+					};
+				}
+			}
+
 			stopSeeding();
 
-			if (cleanWdb) {
+			if (cleanWdb && !gameOpen) {
 				Logger.log('Cleaning up WDB...');
 				await fs.remove(path.join(clientDir, 'WDB'));
 			}
@@ -74,13 +119,19 @@ export const launcherRouter = createTRPCRouter({
 			Logger.log('Syncing preferred monitor...');
 			await Mods.verify();
 
+			Logger.log('Checking the login route...');
+			await preparePrivateRoute();
+
 			Logger.log('Checking Config.wtf...');
 			await patchConfig();
 			await ensureDxvkConf(clientDir);
+			const privateHost = privateRouteInUse();
 
 			await removeLegacyLocalePatches(clientDir);
 
-			if (Preferences.data.patchedLocale !== Preferences.data.locale) {
+			if (gameOpen) {
+				// a language or tweak change waits for a Play with no game open
+			} else if (Preferences.data.patchedLocale !== Preferences.data.locale) {
 				Logger.log(
 					`Applying the client language (${Preferences.data.locale})...`
 				);
@@ -96,9 +147,20 @@ export const launcherRouter = createTRPCRouter({
 						e
 					);
 				}
+			} else if (await isClientBaseWow(clientDir).catch(() => false)) {
+				Logger.log('WoW.exe lost the launcher tweaks; applying them again...');
+				try {
+					await patchExecutable();
+					await Updater.recordPatchedWow();
+				} catch (e) {
+					Logger.error(
+						'Could not apply the WoW.exe tweaks; launching without them',
+						e
+					);
+				}
 			}
 
-			const loaderPath = path.join(clientDir, 'VanillaFixes.exe');
+			const loaderPath = path.join(clientDir, loaderExeName());
 			const needsLoader = await chainloaderNeeded(clientDir);
 			const useLoader = needsLoader && (await fs.pathExists(loaderPath));
 			if (useLoader) await syncVanillaFixesCache(clientDir);
@@ -108,59 +170,120 @@ export const launcherRouter = createTRPCRouter({
 						'launching WoW.exe directly (mods will not load).'
 				);
 
+			const plan = useLoader
+				? resolveLaunch(loaderPath, [gameExeName()], clientDir)
+				: resolveLaunch(exePath, [], clientDir);
+			const launchLabel = `${plan.command} ${plan.args.join(' ')}`.trim();
 			Logger.log(
-				useLoader ? 'Launching via VanillaFixes...' : `Launching ${exePath}...`
+				`Launching${plan.wrapped ? ' via a wrapper' : ''}: ${launchLabel}` +
+					(plan.env ? ` (env ${Object.keys(plan.env).join(', ')})` : '')
 			);
-			const child = useLoader
-				? spawn(loaderPath, ['WoW.exe'], {
-						cwd: clientDir,
-						detached: !minimizeToTrayOnPlay
-				  })
-				: spawn(exePath, {
-						cwd: clientDir,
-						detached: !minimizeToTrayOnPlay
-				  });
-
+			let child: ChildProcess;
 			try {
+				child = spawn(plan.command, plan.args, {
+					cwd: clientDir,
+					detached: !minimizeToTrayOnPlay,
+					...(plan.env ? { env: { ...process.env, ...plan.env } } : {})
+				});
 				await new Promise<void>((resolve, reject) => {
 					child.once('spawn', resolve);
 					child.once('error', reject);
 				});
 			} catch (e) {
 				Logger.error('Failed to launch the game', e);
+				// a flagged exe fails with ERROR_VIRUS_INFECTED, which libuv has no errno for
+				if (!isLinux && (e as NodeJS.ErrnoException)?.code === 'UNKNOWN')
+					return {
+						ok: false,
+						error:
+							'Your antivirus stopped the game from starting. Add the game folder as an ' +
+							'exception (Settings, "Allow through antivirus"), then click Play again.',
+						errorKey: 'launch.blockedByAntivirus'
+					};
+				if (
+					isLinux &&
+					plan.wrapped &&
+					(e as NodeJS.ErrnoException)?.code === 'ENOENT'
+				)
+					return {
+						ok: false,
+						error:
+							'Wine is needed to run WoW on Linux. Install it with your package manager ' +
+							'(for example: sudo apt install wine), then press Play again.'
+					};
 				const message = e instanceof Error ? e.message : String(e);
 				return { ok: false, error: `Failed to launch the game: ${message}` };
 			}
 
 			child.on('error', e => Logger.error('Game process error', e));
 
+			const afterGame = async (): Promise<boolean> => {
+				Logger.log('WoW stopped');
+				if (--openGames > 0) return false;
+				const ended = privateLaunches.splice(0);
+				if (ended.length) endPrivateRoute();
+				for (const l of ended)
+					await restorePublicRealm(l.clientDir, l.host)
+						.then(() =>
+							Logger.log(
+								'Standard login address restored after the game closed'
+							)
+						)
+						.catch(e =>
+							Logger.warn('Could not restore the standard login address', e)
+						);
+				return true;
+			};
+			const watchGame = (onExit: () => void) => {
+				if (useLoader) {
+					void (async () => {
+						try {
+							const started = Date.now();
+							while (
+								Date.now() - started < 30_000 &&
+								!(await isGameRunning(exePath))
+							)
+								await delay(1000);
+							while (await isGameRunning(exePath)) await delay(3000);
+						} finally {
+							onExit();
+						}
+					})();
+				} else {
+					child.on('exit', onExit);
+				}
+			};
+
+			if (privateHost) privateLaunches.push({ clientDir, host: privateHost });
+
 			if (!minimizeToTrayOnPlay) {
-				mainWindow?.close();
+				if (!privateLaunches.length) {
+					mainWindow?.close();
+					return { ok: true };
+				}
+				openGames++;
+				mainWindow?.hide();
+				watchGame(() => {
+					void afterGame().then(last => {
+						if (
+							last &&
+							(!mainWindow ||
+								mainWindow.isDestroyed() ||
+								!mainWindow.isVisible())
+						)
+							app.quit();
+					});
+				});
 				return { ok: true };
 			}
 
+			openGames++;
 			minimizeToTray();
-			if (useLoader) {
-				void (async () => {
-					try {
-						const started = Date.now();
-						while (
-							Date.now() - started < 30_000 &&
-							!(await isGameRunning(exePath))
-						)
-							await delay(1000);
-						while (await isGameRunning(exePath)) await delay(3000);
-					} finally {
-						Logger.log('WoW stopped');
-						restoreFromTray();
-					}
-				})();
-			} else {
-				child.on('exit', () => {
-					Logger.log('WoW stopped');
-					restoreFromTray();
+			watchGame(() => {
+				void afterGame().then(last => {
+					if (last) restoreFromTray();
 				});
-			}
+			});
 			return { ok: true };
 		} catch (e) {
 			Logger.error('Failed to start the game', e);

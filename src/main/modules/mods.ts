@@ -17,20 +17,21 @@ import {
 import { type ModState } from '~common/schemas';
 
 import Preferences from './preferences';
-import { isTorrentMode, stopSeeding } from './aria2';
+import { isTorrentMode, stopSeeding, clientDownloadFileUrl } from './aria2';
 import Observable from './observable';
 import Updater from './updater';
-import { addDll, removeDll, listDlls } from './dllsTxt';
+import { addDll, removeDll, hasDll, listDlls } from './dllsTxt';
 import { enumerateDisplays } from './displays';
+import { isWindows } from './platform';
+import {
+	modTargetFiles,
+	classifyModFile,
+	recordWritten,
+	removePlayerCopy,
+	pinnedSha256
+} from './playerFiles';
 
 const MOD_DOWNLOAD_TIMEOUT_MS = 60_000;
-
-/** Files a mod installs on disk. */
-const modTargetFiles = (m: ModEntry): string[] => {
-	if (m.source.kind === 'directFile') return [m.source.assetName];
-	if (m.source.kind === 'archive') return Object.values(m.source.extractMap);
-	return [];
-};
 
 // client-shipped DLLs that aren't injectable mods; not counted as custom mods
 const RESERVED_DLLS = new Set([
@@ -72,8 +73,12 @@ const fileSha256 = async (p: string): Promise<string | null> => {
 	}
 };
 
-const looksLikeAvBlock = (msg: string) =>
-	/windows defender|virus|potentially unwanted/i.test(msg);
+// a file Defender blocks fails to open with libuv's UNKNOWN (the virus error has no errno)
+const looksLikeAvBlock = (e: unknown) =>
+	(isWindows && (e as NodeJS.ErrnoException)?.code === 'UNKNOWN') ||
+	/windows defender|virus|potentially unwanted/i.test(
+		e instanceof Error ? e.message : String(e)
+	);
 
 export type ModRowStatus = {
 	id: ModId;
@@ -89,6 +94,7 @@ export type ModRowStatus = {
 	state: 'idle' | 'downloading' | 'installing' | 'uninstalling' | 'error';
 	progress?: number;
 	error?: string;
+	customFiles: string[];
 };
 
 export type CustomMod = { name: string; enabled: boolean };
@@ -133,8 +139,37 @@ class ModsClass extends Observable<ModsStatus> {
 			ignoreUpdates: !!state?.ignoreUpdates,
 			installedVersion: state?.installedVersion,
 			latestVersion: m.version,
-			state: 'idle'
+			state: 'idle',
+			customFiles: []
 		};
+	}
+
+	async #onInFolder(
+		m: ModEntry,
+		clientDir: string | undefined
+	): Promise<boolean> {
+		if (!clientDir) return false;
+		const files = modTargetFiles(m);
+		if (!files.length) return false;
+		const present = (
+			await Promise.all(
+				files.map(rel => fs.pathExists(path.join(clientDir, rel)))
+			)
+		).every(Boolean);
+		if (!present) return false;
+		return (
+			!m.registerInDllsTxt ||
+			(await hasDll(clientDir, m.registerInDllsTxt).catch(() => false))
+		);
+	}
+
+	async #playerFiles(m: ModEntry, clientDir: string | undefined) {
+		if (!clientDir) return [];
+		const own: string[] = [];
+		for (const rel of modTargetFiles(m))
+			if ((await classifyModFile(clientDir, rel)).kind === 'player')
+				own.push(rel);
+		return own;
 	}
 
 	#patchRow(id: ModId, patch: Partial<ModRowStatus>) {
@@ -300,30 +335,89 @@ class ModsClass extends Observable<ModsStatus> {
 			const state = Preferences.data?.mods?.[m.id];
 			let installedVersion = state?.installedVersion;
 
+			// on-demand mod: never missing or dirty, only the player's toggle installs or removes it
+			if (isTorrentMode() && m.separateDownload) {
+				const files = modTargetFiles(m);
+				const present =
+					!!clientDir &&
+					files.length > 0 &&
+					(
+						await Promise.all(
+							files.map(rel => fs.pathExists(path.join(clientDir, rel)))
+						)
+					).every(Boolean);
+				const dll = m.registerInDllsTxt;
+				const listed =
+					!state &&
+					(!dll ||
+						(!!clientDir && (await hasDll(clientDir, dll).catch(() => false))));
+				const on = state ? state.enabled && present : present && listed;
+				if (state && clientDir && m.registerInDllsTxt)
+					await (on
+						? addDll(clientDir, m.registerInDllsTxt)
+						: removeDll(clientDir, m.registerInDllsTxt)
+					).catch(e => Logger.warn(`dlls.txt update failed for ${m.id}`, e));
+				this.#patchRow(m.id, {
+					installedVersion: on ? m.version : undefined,
+					latestVersion: m.version,
+					enabled: on,
+					ignoreUpdates: true,
+					customFiles: await this.#playerFiles(m, clientDir)
+				});
+				continue;
+			}
+
+			if (isTorrentMode() && !state && Preferences.settingsLost) {
+				const on = await this.#onInFolder(m, clientDir);
+				const files = modTargetFiles(m);
+				const present =
+					!!clientDir &&
+					files.length > 0 &&
+					(
+						await Promise.all(
+							files.map(rel => fs.pathExists(path.join(clientDir, rel)))
+						)
+					).every(Boolean);
+				await this.#savePref(m.id, {
+					enabled: on,
+					installedFiles: [],
+					ignoreUpdates: false
+				});
+				this.#patchRow(m.id, {
+					installedVersion: on && present ? m.version : undefined,
+					latestVersion: m.version,
+					enabled: on,
+					ignoreUpdates: true,
+					customFiles: await this.#playerFiles(m, clientDir)
+				});
+				continue;
+			}
+
 			// torrent mode: DLLs ship in the client; a missing file goes to `missing`, not dirty
 			if (isTorrentMode()) {
-				const enabled = state?.enabled ?? DEFAULT_ENABLED_MODS.includes(m.id);
+				// no saved choice: the game folder decides, so a newly listed mod never turns itself on
+				const enabled =
+					state?.enabled ?? (await this.#onInFolder(m, clientDir));
 				// dxvk loads by file presence and torrent piece spillover can
 				// corrupt it; hash-verify every state: park/restore verified
 				// copies only, delete junk, re-download the pin when needed
 				if (m.id === 'dxvk' && clientDir) {
 					const live = path.join(clientDir, 'd3d9.dll');
 					const off = path.join(clientDir, 'd3d9.dll.off');
-					const liveSha = await fileSha256(live);
-					if (!enabled) {
-						if (
-							liveSha === DXVK_DLL_SHA256 &&
-							!(await fs.pathExists(off))
-						) {
+					const kind = (await classifyModFile(clientDir, 'd3d9.dll')).kind;
+					if (kind === 'player' || kind === 'unknown') {
+						// not ours to park, replace or remove
+					} else if (!enabled) {
+						if (kind === 'ours' && !(await fs.pathExists(off))) {
 							await fs
 								.move(live, off)
 								.then(() => Logger.info('dxvk disabled: parked d3d9.dll'))
 								.catch(e => Logger.warn('Could not park d3d9.dll', e));
-						} else if (liveSha !== null) {
+						} else if (kind !== 'missing') {
 							await fs.remove(live).catch(() => undefined);
 						}
-					} else if (liveSha !== DXVK_DLL_SHA256) {
-						if (liveSha !== null) {
+					} else if (kind !== 'ours') {
+						if (kind === 'broken') {
 							Logger.warn('dxvk: d3d9.dll failed verification; replacing');
 							await fs.remove(live).catch(() => undefined);
 						}
@@ -334,8 +428,7 @@ class ModsClass extends Observable<ModsStatus> {
 								.then(() => Logger.info('dxvk enabled: restored d3d9.dll'))
 								.catch(e => Logger.warn('Could not restore d3d9.dll', e));
 						} else {
-							if (offSha !== null)
-								await fs.remove(off).catch(() => undefined);
+							if (offSha !== null) await fs.remove(off).catch(() => undefined);
 							dxvkRepair = true;
 						}
 					}
@@ -361,7 +454,8 @@ class ModsClass extends Observable<ModsStatus> {
 					installedVersion,
 					latestVersion: m.version,
 					enabled,
-					ignoreUpdates: true
+					ignoreUpdates: true,
+					customFiles: await this.#playerFiles(m, clientDir)
 				});
 				continue;
 			}
@@ -393,7 +487,8 @@ class ModsClass extends Observable<ModsStatus> {
 				installedVersion,
 				latestVersion: m.version,
 				enabled: !!state?.enabled,
-				ignoreUpdates: !!state?.ignoreUpdates
+				ignoreUpdates: !!state?.ignoreUpdates,
+				customFiles: await this.#playerFiles(m, clientDir)
 			});
 		}
 
@@ -464,6 +559,9 @@ class ModsClass extends Observable<ModsStatus> {
 	}
 
 	async toggle(id: ModId, enabled: boolean) {
+		const mod = getMod(id);
+		if (mod?.separateDownload && isTorrentMode())
+			return this.#toggleSeparate(mod, enabled);
 		const cur = Preferences.data?.mods?.[id];
 		await this.#savePref(id, {
 			enabled,
@@ -483,6 +581,124 @@ class ModsClass extends Observable<ModsStatus> {
 			ignoreUpdates: ignore
 		});
 		this.#patchRow(id, { ignoreUpdates: ignore });
+	}
+
+	async useLauncherVersion(id: ModId) {
+		const m = getMod(id);
+		const clientDir = Preferences.data?.clientDir;
+		if (!m || !clientDir) return;
+		const own = await this.#playerFiles(m, clientDir);
+		if (!own.length) return;
+		// the seeder holds the client files open
+		stopSeeding();
+		let error: string | undefined;
+		try {
+			for (const rel of own) await removePlayerCopy(clientDir, rel);
+			const enabled =
+				Preferences.data?.mods?.[id]?.enabled ??
+				DEFAULT_ENABLED_MODS.includes(id);
+			if (id === 'dxvk') {
+				// verify() puts the launcher's d3d9.dll back while dxvk is on
+			} else if (isTorrentMode() && !m.separateDownload) {
+				await Updater.update();
+			} else if (enabled) {
+				await this.#install(m, { force: true });
+			}
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			Logger.error(`Could not put the launcher's ${m.id} back:`, e);
+			error = looksLikeAvBlock(e) ? AV_ERROR : msg;
+		}
+		await this.verify();
+		if (error) this.#patchRow(m.id, { state: 'error', error });
+		await Updater.refreshSeeding().catch(() => undefined);
+	}
+
+	async #toggleSeparate(m: ModEntry, enabled: boolean) {
+		const clientDir = Preferences.data?.clientDir;
+		const cur = Preferences.data?.mods?.[m.id];
+		const ignoreUpdates = cur?.ignoreUpdates ?? false;
+
+		if (!enabled) {
+			await this.#savePref(m.id, {
+				enabled: false,
+				installedVersion: cur?.installedVersion,
+				installedFiles: cur?.installedFiles ?? [],
+				ignoreUpdates
+			});
+			if (cur?.installedFiles?.length)
+				await this.#uninstall(m).catch(e =>
+					Logger.warn(`Couldn't remove ${m.id}`, e)
+				);
+			await this.verify();
+			return;
+		}
+
+		const files = modTargetFiles(m);
+		const present =
+			!!clientDir &&
+			files.length > 0 &&
+			(
+				await Promise.all(
+					files.map(rel => fs.pathExists(path.join(clientDir, rel)))
+				)
+			).every(Boolean);
+		await this.#savePref(m.id, {
+			enabled: true,
+			installedVersion: cur?.installedVersion,
+			installedFiles: cur?.installedFiles ?? [],
+			ignoreUpdates
+		});
+		if (!present) {
+			try {
+				await this.#install(m);
+			} catch (e) {
+				const msg = e instanceof Error ? e.message : String(e);
+				Logger.error(`Failed to install ${m.id}:`, e);
+				await this.#savePref(m.id, {
+					enabled: false,
+					installedVersion: undefined,
+					installedFiles: [],
+					ignoreUpdates
+				});
+				await this.verify();
+				this.#patchRow(m.id, {
+					state: 'error',
+					error: looksLikeAvBlock(e) ? AV_ERROR : msg
+				});
+				return;
+			}
+		}
+		await this.verify();
+	}
+
+	async #restoreSeparateDownloads() {
+		const clientDir = Preferences.data?.clientDir;
+		if (!clientDir) return;
+		let changed = false;
+		for (const m of MODS) {
+			if (m.disabled || !m.separateDownload) continue;
+			const st = Preferences.data?.mods?.[m.id];
+			if (!st?.enabled || !st.installedFiles?.length) continue;
+			const present = (
+				await Promise.all(
+					st.installedFiles.map(rel => fs.pathExists(path.join(clientDir, rel)))
+				)
+			).every(Boolean);
+			if (present) continue;
+			changed = true;
+			try {
+				await this.#install(m);
+			} catch (e) {
+				const msg = e instanceof Error ? e.message : String(e);
+				Logger.error(`Failed to restore ${m.id}:`, e);
+				this.#patchRow(m.id, {
+					state: 'error',
+					error: looksLikeAvBlock(e) ? AV_ERROR : msg
+				});
+			}
+		}
+		if (changed) await this.verify();
 	}
 
 	async applyAll(opts: { repairOnly?: boolean } = {}) {
@@ -518,6 +734,7 @@ class ModsClass extends Observable<ModsStatus> {
 			stopSeeding();
 			try {
 				await this.verify();
+				if (opts.repairOnly) await this.#restoreSeparateDownloads();
 			} finally {
 				await Updater.refreshSeeding().catch(() => undefined);
 			}
@@ -562,7 +779,7 @@ class ModsClass extends Observable<ModsStatus> {
 			} catch (e) {
 				Logger.error(`Failed to apply ${m.id}:`, e);
 				const msg = e instanceof Error ? e.message : String(e);
-				failures.set(m.id, looksLikeAvBlock(msg) ? AV_ERROR : msg);
+				failures.set(m.id, looksLikeAvBlock(e) ? AV_ERROR : msg);
 			}
 		}
 
@@ -573,7 +790,7 @@ class ModsClass extends Observable<ModsStatus> {
 		await Updater.verify();
 	}
 
-	async #install(m: ModEntry) {
+	async #install(m: ModEntry, opts: { force?: boolean } = {}) {
 		const clientDir = Preferences.data?.clientDir;
 		// dxvk: restoring a parked copy is the only enable path that works in
 		// torrent mode (nothing is fetched there, the sync ignores d3d9.dll)
@@ -587,8 +804,7 @@ class ModsClass extends Observable<ModsStatus> {
 					enabled: true,
 					installedVersion: m.version,
 					installedFiles: ['d3d9.dll'],
-					ignoreUpdates:
-						Preferences.data?.mods?.[m.id]?.ignoreUpdates ?? false
+					ignoreUpdates: Preferences.data?.mods?.[m.id]?.ignoreUpdates ?? false
 				});
 				this.#patchRow(m.id, {
 					state: 'idle',
@@ -600,7 +816,7 @@ class ModsClass extends Observable<ModsStatus> {
 		}
 		// torrent mode ships mod binaries with the client; dxvk is the
 		// exception (unsynced), a fresh enable with no parked copy downloads
-		if (isTorrentMode() && m.id !== 'dxvk') return;
+		if (isTorrentMode() && m.id !== 'dxvk' && !m.separateDownload) return;
 		if (!clientDir) throw new Error('No client dir');
 		if (m.source.kind === 'managed') return;
 
@@ -613,60 +829,113 @@ class ModsClass extends Observable<ModsStatus> {
 
 		const written: string[] = [];
 		const missing: string[] = [];
+		const keep = new Set(
+			opts.force ? [] : await this.#playerFiles(m, clientDir)
+		);
+		if (keep.size)
+			Logger.info(
+				`Keeping the player's own ${[...keep].join(', ')} for ${m.id}`
+			);
 
 		if (m.source.kind === 'directFile') {
-			const dest = path.join(clientDir, m.source.assetName);
-			await this.#downloadTo(m.source.url, dest, m.source.sha256);
-			written.push(m.source.assetName);
-		} else if (m.source.kind === 'archive') {
-			const scratch = path.join(clientDir, '.octolauncher-tmp');
-			await fs.ensureDir(scratch);
-			const tmp = path.join(
-				scratch,
-				`${m.id}-${Date.now()}.${m.source.format}`
-			);
-			await this.#downloadTo(m.source.url, tmp, m.source.sha256);
-			this.#patchRow(m.id, { state: 'installing' });
-
-			const map = m.source.extractMap;
-			if (m.source.format === 'zip') {
-				const zip = new AdmZip(tmp);
-				const entries = zip.getEntries();
-				for (const [src, dst] of Object.entries(map)) {
-					const entry = entries.find(e => e.entryName === src);
-					if (!entry) {
-						missing.push(src);
-						continue;
-					}
-					const target = path.join(clientDir, dst);
-					await fs.ensureDir(path.dirname(target));
-					await fs.writeFile(target, entry.getData());
-					written.push(dst);
-				}
-			} else {
-				const stagingDir = path.join(scratch, `${m.id}-${Date.now()}-extract`);
-				await fs.ensureDir(stagingDir);
-				await tar.x({ file: tmp, cwd: stagingDir });
-				for (const [src, dst] of Object.entries(map)) {
-					const srcPath = path.join(stagingDir, src);
-					if (!(await fs.pathExists(srcPath))) {
-						missing.push(src);
-						continue;
-					}
-					const target = path.join(clientDir, dst);
-					await fs.ensureDir(path.dirname(target));
-					await fs.copy(srcPath, target);
-					written.push(dst);
-				}
-				await fs.remove(stagingDir).catch(() => {});
+			if (!keep.has(m.source.assetName)) {
+				const dest = path.join(clientDir, m.source.assetName);
+				await this.#downloadTo(
+					m.source.url,
+					dest,
+					m.source.sha256 ?? pinnedSha256(m.source.assetName)
+				);
+				written.push(m.source.assetName);
 			}
-			await fs.remove(tmp).catch(() => {});
+		} else if (
+			m.source.kind === 'archive' &&
+			keep.size < modTargetFiles(m).length
+		) {
+			const fromClientDownload = new Set<string>();
+			for (const dst of modTargetFiles(m)) {
+				const pin = pinnedSha256(dst);
+				if (keep.has(dst) || !pin) continue;
+				const url = await clientDownloadFileUrl(dst);
+				if (!url) continue;
+				try {
+					await this.#downloadTo(url, path.join(clientDir, dst), pin);
+					fromClientDownload.add(dst);
+					written.push(dst);
+				} catch (e) {
+					Logger.warn(
+						`${dst} from the client download servers failed; using ${m.name}'s own source`,
+						e
+					);
+				}
+			}
+			const wanted = Object.entries(m.source.extractMap).filter(
+				([, dst]) => !keep.has(dst) && !fromClientDownload.has(dst)
+			);
+			if (wanted.length) {
+				const scratch = path.join(clientDir, '.octolauncher-tmp');
+				await fs.ensureDir(scratch);
+				const tmp = path.join(
+					scratch,
+					`${m.id}-${Date.now()}.${m.source.format}`
+				);
+				const stagingDir = path.join(scratch, `${m.id}-${Date.now()}-extract`);
+				let downloaded = false;
+				try {
+					await this.#downloadTo(m.source.url, tmp, m.source.sha256);
+					downloaded = true;
+					this.#patchRow(m.id, { state: 'installing' });
+
+					// check every pinned file before writing any
+					const files: { dst: string; data: Buffer; srcPath?: string }[] = [];
+					if (m.source.format === 'zip') {
+						const entries = new AdmZip(tmp).getEntries();
+						for (const [src, dst] of wanted) {
+							const entry = entries.find(e => e.entryName === src);
+							if (entry) files.push({ dst, data: entry.getData() });
+							else missing.push(src);
+						}
+					} else {
+						await fs.ensureDir(stagingDir);
+						await tar.x({ file: tmp, cwd: stagingDir });
+						for (const [src, dst] of wanted) {
+							const srcPath = path.join(stagingDir, src);
+							if (await fs.pathExists(srcPath))
+								files.push({ dst, data: await fs.readFile(srcPath), srcPath });
+							else missing.push(src);
+						}
+					}
+					for (const { dst, data } of files) {
+						const pin = pinnedSha256(dst);
+						if (pin && createHash('sha256').update(data).digest('hex') !== pin)
+							throw new Error(
+								`${m.name}: ${dst} in the download is not the expected build. Refusing to install.`
+							);
+					}
+					for (const { dst, data, srcPath } of files) {
+						const target = path.join(clientDir, dst);
+						await fs.ensureDir(path.dirname(target));
+						if (srcPath) await fs.copy(srcPath, target);
+						else await fs.writeFile(target, data);
+						written.push(dst);
+					}
+				} catch (e) {
+					if (downloaded && !(await fs.pathExists(tmp))) {
+						Logger.warn(`${m.name}: the downloaded archive was removed`, e);
+						throw new Error(AV_ERROR);
+					}
+					throw e;
+				} finally {
+					await fs.remove(stagingDir).catch(() => {});
+					await fs.remove(tmp).catch(() => {});
+				}
+			}
 		}
 
 		if (missing.length)
 			throw new Error(
 				`${m.name}: download is missing expected file(s): ${missing.join(', ')}`
 			);
+		for (const rel of written) await recordWritten(clientDir, rel);
 
 		if (m.registerInDllsTxt) {
 			await addDll(clientDir, m.registerInDllsTxt);
@@ -702,16 +971,25 @@ class ModsClass extends Observable<ModsStatus> {
 		if (m.id === 'dxvk') {
 			const live = path.join(clientDir, 'd3d9.dll');
 			const off = path.join(clientDir, 'd3d9.dll.off');
-			if (await fs.pathExists(live)) {
+			const kind = (await classifyModFile(clientDir, 'd3d9.dll')).kind;
+			if (kind === 'ours') {
 				await fs.remove(off).catch(() => undefined);
 				await fs
 					.move(live, off)
 					.catch(err => Logger.warn(`Couldn't park ${live}:`, err));
+			} else if (kind === 'broken') {
+				await fs.remove(live).catch(() => undefined);
 			}
 		}
 
 		for (const rel of files) {
 			const fullPath = path.join(clientDir, rel);
+			const kind = (await classifyModFile(clientDir, rel)).kind;
+			if (kind !== 'ours' && kind !== 'broken') {
+				if (kind !== 'missing')
+					Logger.info(`Keeping ${rel}: it is the player's own copy`);
+				continue;
+			}
 			await fs
 				.remove(fullPath)
 				.catch(err => Logger.warn(`Couldn't remove ${fullPath}:`, err));

@@ -14,7 +14,7 @@ Desktop launcher for the OctoWoW (World of Warcraft 1.12.1 private server) clien
 
 ## Quick start (players)
 
-1. Grab `OctoLauncher.exe` (portable) or `OctoLauncher_Installer.exe` from the [Releases](../../releases) page.
+1. Grab the installer (`OctoLauncher_Installer-<version>.exe`) from the [Releases](../../releases) page. On Linux, use the AppImage (see [Tools/linux/README.md](Tools/linux/README.md)).
 2. Run it and set your WoW client directory when prompted.
 3. Click **Verify** to download any missing game files, then **Play**.
 
@@ -28,7 +28,7 @@ No server configuration needed; the launcher connects to `octowow.st` by default
 
 | Requirement | Version | Notes |
 |---|---|---|
-| Node.js | 20 LTS | Node 22+ breaks `dll-inject` native bindings: use Node 20 |
+| Node.js | 20 LTS | The release builds use Node 20 |
 | VS 2022 Build Tools | C++ workload + Win SDK | `node-gyp` v10 only detects VS2017-2022 |
 | Python | 3.x | Required by `node-gyp` |
 
@@ -51,7 +51,7 @@ winget install Microsoft.VisualStudio.2022.BuildTools `
 npm install
 ```
 
-`postinstall` rebuilds the native modules (`dll-inject`, `stormlib-node`) against the Electron ABI; expect C++ compiler output.
+`postinstall` rebuilds the native module (`stormlib-node`) against the Electron ABI; expect C++ compiler output.
 
 ### Run in development
 
@@ -73,9 +73,11 @@ Remove-Item Env:ELECTRON_RUN_AS_NODE
 npm run dist
 ```
 
-Outputs to `dist/`:
-- `OctoLauncher.exe`: portable single-file
-- `OctoLauncher_Installer.exe`: NSIS installer
+Outputs to `distprod/`:
+- `OctoLauncher_Installer-<version>.exe`: NSIS installer
+- `OctoLauncher_Installer-<version>.exe.blockmap` and `latest.yml`: the self-update feed files
+
+The Linux AppImage is built with `npm run dist:linux` (Docker); see [Tools/linux/README.md](Tools/linux/README.md).
 
 The production build uses `.env.production` (committed) which points to `https://octowow.st`. No `.env` file needed.
 

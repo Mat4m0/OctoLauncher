@@ -30,13 +30,25 @@ files:
   - '!**/node_modules/**/*.{vcxproj,vcxproj.filters}'
 npmRebuild: false
 electronLanguages: en
-extraResources:
-  - from: resources/aria2c.exe
-    to: aria2c.exe
 win:
   artifactName: ${productName}.${ext}
   target:
     - nsis
+  extraResources:
+    - from: resources/aria2c.exe
+      to: aria2c.exe
+# built by Tools/linux/build-appimage.sh
+linux:
+  target:
+    - AppImage
+  artifactName: ${productName}-${version}.${ext}
+  executableName: octolauncher
+  category: Game
+  synopsis: OctoWoW launcher
+  icon: build/icon.png
+  extraResources:
+    - from: resources/aria2c
+      to: aria2c
 nsis:
   # versioned: differential updates need the old blockmap to stay fetchable
   artifactName: ${productName}_Installer-${version}.${ext}
@@ -45,4 +57,4 @@ nsis:
   removeDefaultUninstallWelcomePage: true
 publish:
   - provider: generic
-    url: 'https://octowow.st/launcher-updates/'
+    url: 'https://dl.octowow.st/launcher-updates/'

@@ -11,6 +11,9 @@ import { PreferencesSchema } from '~common/schemas';
 import { appRouter } from './api/root';
 import { stopSyncing, stopSeeding } from './modules/aria2';
 import Preferences from './modules/preferences';
+import { adoptSettingsFromFolder } from './modules/patcher';
+import AuthStore from './modules/authStore';
+import { refreshAtStartup } from './modules/authClient';
 import Updater from './modules/updater';
 import Addons from './modules/addons';
 import Mods from './modules/mods';
@@ -50,13 +53,25 @@ const isOnScreen = (
 	});
 };
 
+const saveWindowPosition = () => {
+	if (!mainWindow || mainWindow.isDestroyed()) return;
+	const { x, y, width, height } = mainWindow.getNormalBounds();
+	Preferences.data = {
+		windowPosition: { x, y, width, height, maximized: mainWindow.isMaximized() }
+	};
+};
+
 const createWindow = async () => {
 	const saved =
 		Preferences.data.rememberPosition &&
 		isOnScreen(Preferences.data.windowPosition)
 			? Preferences.data.windowPosition
 			: undefined;
-	const position = saved ?? { width: 1000, height: 700 };
+	const { maximized, ...position } = saved ?? {
+		width: 1000,
+		height: 700,
+		maximized: false
+	};
 
 	mainWindow = new BrowserWindow({
 		...position,
@@ -64,7 +79,8 @@ const createWindow = async () => {
 		minHeight: 700,
 		icon,
 		frame: false,
-		maximizable: false,
+		resizable: true,
+		maximizable: true,
 		fullscreenable: false,
 		webPreferences: {
 			preload: join(__dirname, '../preload/index.js'),
@@ -73,6 +89,8 @@ const createWindow = async () => {
 			devTools: true
 		}
 	});
+
+	if (maximized) mainWindow.maximize();
 
 	mainWindow.webContents.on('render-process-gone', (_e, details) => {
 		Logger.error('Renderer process gone:', details);
@@ -108,12 +126,7 @@ const createWindow = async () => {
 		shell.openExternal(details.url);
 		return { action: 'deny' };
 	});
-	mainWindow.on('close', () => {
-		if (!mainWindow) return;
-		const [x = 0, y = 0] = mainWindow.getPosition();
-		const [width = 0, height = 0] = mainWindow.getSize();
-		Preferences.data = { windowPosition: { x, y, width, height } };
-	});
+	mainWindow.on('close', saveWindowPosition);
 
 	if (is.dev && process.env.ELECTRON_RENDERER_URL) {
 		mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
@@ -142,6 +155,13 @@ if (!gotSingleInstanceLock) {
 			Logger.error('Preferences.load() failed; starting on defaults', e);
 			Preferences.data = PreferencesSchema.parse({});
 		}
+		if (Preferences.settingsLost)
+			await adoptSettingsFromFolder().catch(e =>
+				Logger.error('Could not take the settings from the game folder', e)
+			);
+
+		await AuthStore.load();
+		refreshAtStartup();
 
 		Addons.verify();
 		Updater.verify();
@@ -206,6 +226,8 @@ if (!gotSingleInstanceLock) {
 		stopSeeding();
 		if (settingsFlushed) return;
 		settingsFlushed = true;
+		// the window's own 'close' save would land after this flush
+		saveWindowPosition();
 		event.preventDefault();
 		Promise.race([Preferences.save(), new Promise(r => setTimeout(r, 3000))])
 			.catch(e => Logger.error('Failed to flush settings before quit', e))

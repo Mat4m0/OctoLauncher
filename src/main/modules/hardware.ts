@@ -1,4 +1,6 @@
 import os from 'node:os';
+import fs from 'node:fs';
+import path from 'node:path';
 import { spawn } from 'node:child_process';
 
 import { app } from 'electron';
@@ -106,6 +108,135 @@ export const detectHardware = async (): Promise<HardwareInfo> => {
 	};
 	Logger.info('Detected hardware', info);
 	return info;
+};
+
+// any doubt means no: a false no only costs fps, a false yes breaks the game
+const VULKAN_PROBE_TIMEOUT_MS = 6000;
+
+// modern drivers register the ICD on the display adapter, not under the Khronos key
+const collectIcdPaths = (): Promise<string[]> => {
+	const script = [
+		"$ErrorActionPreference = 'SilentlyContinue'",
+		'$paths = New-Object System.Collections.Generic.List[string]',
+		`$cls = 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Class\\${VIDEO_CLASS_GUID}'`,
+		'Get-ChildItem $cls | ForEach-Object {',
+		'  $v = (Get-ItemProperty $_.PSPath).VulkanDriverNameWow',
+		'  foreach ($p in @($v)) { if ($p) { $paths.Add([string]$p) } }',
+		'}',
+		"$leg = 'HKLM:\\SOFTWARE\\WOW6432Node\\Khronos\\Vulkan\\Drivers'",
+		'if (Test-Path $leg) {',
+		'  $k = Get-Item $leg',
+		'  foreach ($n in $k.GetValueNames()) {',
+		'    if ($k.GetValue($n) -eq 0) { $paths.Add([string]$n) }',
+		'  }',
+		'}',
+		'$paths | Sort-Object -Unique | ForEach-Object { $_ }'
+	].join('\n');
+	const encoded = Buffer.from(script, 'utf16le').toString('base64');
+
+	return new Promise(resolve => {
+		let out = '';
+		let settled = false;
+		const done = (v: string[]) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			resolve(v);
+		};
+		let child;
+		try {
+			child = spawn(
+				'powershell.exe',
+				['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded],
+				{ windowsHide: true }
+			);
+		} catch {
+			return done([]);
+		}
+		const timer = setTimeout(() => {
+			child?.kill();
+			done([]);
+		}, VULKAN_PROBE_TIMEOUT_MS);
+		child.stdout?.on('data', d => (out += String(d)));
+		child.on('error', () => done([]));
+		child.on('exit', () =>
+			done(
+				out
+					.split(/\r?\n/)
+					.map(s => s.trim())
+					.filter(Boolean)
+			)
+		);
+	});
+};
+
+const icdDllExists = (
+	libPath: string,
+	jsonDir: string,
+	sys32: string,
+	sysWow: string
+): boolean => {
+	try {
+		if (path.isAbsolute(libPath)) return fs.existsSync(libPath);
+		if (/[\\/]/.test(libPath))
+			return fs.existsSync(path.resolve(jsonDir, libPath));
+		return (
+			fs.existsSync(path.join(sysWow, libPath)) ||
+			fs.existsSync(path.join(sys32, libPath))
+		);
+	} catch {
+		return false;
+	}
+};
+
+export const detectVulkanCapable = async (): Promise<boolean> => {
+	try {
+		if (os.platform() !== 'win32') return false;
+
+		const systemRoot =
+			process.env.SystemRoot || process.env.windir || 'C:\\Windows';
+		const sys32 = path.join(systemRoot, 'System32');
+		const sysWow = path.join(systemRoot, 'SysWOW64');
+		const is64 = fs.existsSync(sysWow);
+
+		const loader = is64
+			? path.join(sysWow, 'vulkan-1.dll')
+			: path.join(sys32, 'vulkan-1.dll');
+		if (!fs.existsSync(loader)) {
+			Logger.info('[vulkan] 32-bit loader absent; DXVK default OFF');
+			return false;
+		}
+
+		const candidates = await collectIcdPaths();
+		for (const jsonPath of candidates) {
+			if (!/\.json$/i.test(jsonPath) || !fs.existsSync(jsonPath)) continue;
+			try {
+				const icd = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+				const lib = icd?.ICD?.library_path;
+				if (
+					typeof lib === 'string' &&
+					lib &&
+					icdDllExists(lib, path.dirname(jsonPath), sys32, sysWow)
+				) {
+					Logger.info(`[vulkan] capable: verified 32-bit ICD ${jsonPath}`);
+					return true;
+				}
+			} catch {
+				// malformed manifest, keep looking
+			}
+		}
+		Logger.info('[vulkan] no verified 32-bit ICD; DXVK default OFF');
+		return false;
+	} catch (e) {
+		Logger.warn('[vulkan] probe failed; defaulting DXVK OFF', e);
+		return false;
+	}
+};
+
+let vulkanCapablePromise: Promise<boolean> | undefined;
+export const getVulkanCapable = (): Promise<boolean> => {
+	if (!vulkanCapablePromise) vulkanCapablePromise = detectVulkanCapable();
+	return vulkanCapablePromise;
 };
 
 const clampFarClip = (n: number) =>

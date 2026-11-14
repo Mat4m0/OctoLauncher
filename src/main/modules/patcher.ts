@@ -9,10 +9,14 @@ import { ConfigWtfSchema, type PreferencesSchema } from '~common/schemas';
 import { isNotUndef } from '~common/utils';
 import { readPristineWow } from '~main/modules/aria2';
 import { enumerateDisplays } from '~main/modules/displays';
+import {
+	resolveRealmHost,
+	knownPrivateAddress
+} from '~main/modules/authClient';
 
 const Servers = {
 	live: {
-		realmList: 'octowow.st',
+		realmList: 'play.octowow.st',
 		patchList: 'octowow.st',
 		realmName: 'OctoWoW'
 	},
@@ -25,6 +29,8 @@ const Servers = {
 
 const LOCALES = {
 	enUS: { tag: 'enUS', index: 0 },
+	koKR: { tag: 'koKR', index: 1 },
+	frFR: { tag: 'frFR', index: 2 },
 	deDE: { tag: 'deDE', index: 3 },
 	zhCN: { tag: 'zhCN', index: 4 },
 	ruRU: { tag: 'ruRU', index: 5 },
@@ -99,10 +105,7 @@ export const patchExecutable = async () => {
 			const prevIndex = buffer[INDEX_OFFSET + 1];
 			const prevCarrier = LOCALE_NAMES[prevIndex] as string | undefined;
 			const prevTag = prevCarrier
-				? Buffer.from([
-						0xb8,
-						...Buffer.from(prevCarrier, 'latin1').reverse()
-				  ])
+				? Buffer.from([0xb8, ...Buffer.from(prevCarrier, 'latin1').reverse()])
 				: undefined;
 			if (
 				prevCarrier &&
@@ -266,10 +269,7 @@ export const patchExecutable = async () => {
 					t.tweaks.forEach(
 						([offset, bytes, expect]: [number, number[], number[]?]) => {
 							if (!expect) return;
-							const current = buffer.subarray(
-								offset,
-								offset + bytes.length
-							);
+							const current = buffer.subarray(offset, offset + bytes.length);
 							if (current.equals(Buffer.from(bytes)))
 								Buffer.from(expect).copy(buffer, offset);
 						}
@@ -389,13 +389,50 @@ const applyRealmlist = async (clientDir: string, host: string) => {
 		}
 };
 
+export const stripPrivateRealmFromConfig = async (
+	clientDir: string,
+	host: string | undefined = knownPrivateAddress()
+): Promise<boolean> => {
+	if (!host) return false;
+	const configPath = path.join(clientDir, 'WTF', 'Config.wtf');
+	const text = await fs
+		.readFile(configPath, { encoding: 'utf-8' })
+		.catch(() => null);
+	if (text === null) return false;
+	const eol = text.includes('\r\n') ? '\r\n' : '\n';
+	const lines = text.split(/\r?\n/);
+	const target = host.toLowerCase();
+	const kept = lines.filter(line => {
+		const m = /^\s*set\s+realmlist\s+"?([^"\s]*)"?\s*$/i.exec(line);
+		return !(m && m[1].toLowerCase() === target);
+	});
+	if (kept.length === lines.length) return false;
+	const tmp = `${configPath}.tmp`;
+	await fs.writeFile(tmp, kept.join(eol));
+	await fs.move(tmp, configPath, { overwrite: true });
+	Logger.log('Removed the private login address WoW saved in Config.wtf');
+	return true;
+};
+
+export const restorePublicRealm = async (
+	clientDir: string,
+	privateHost?: string
+) => {
+	const server: keyof typeof Servers = import.meta.env.MAIN_VITE_PTR_REALMLIST
+		? 'ptr'
+		: 'live';
+	await applyRealmlist(clientDir, Servers[server].realmList);
+	await stripPrivateRealmFromConfig(clientDir, privateHost);
+};
+
 // rewrite realmlist.wtf when missing, empty, or wrong; an interrupted sync
 // can leave a 0-byte placeholder that disconnects direct game launches
 export const healRealmlist = async (clientDir: string) => {
 	const server: keyof typeof Servers = import.meta.env.MAIN_VITE_PTR_REALMLIST
 		? 'ptr'
 		: 'live';
-	const expected = `set realmlist "${Servers[server].realmList}"\n`;
+	const host = resolveRealmHost(Servers[server].realmList);
+	const expected = `set realmlist "${host}"\n`;
 	const target = path.join(clientDir, 'realmlist.wtf');
 	const current = await fs
 		.readFile(target, { encoding: 'utf-8' })
@@ -406,7 +443,7 @@ export const healRealmlist = async (clientDir: string) => {
 			current === null ? 'missing' : current.trim() ? 'wrong' : 'empty'
 		}; rewriting`
 	);
-	await applyRealmlist(clientDir, Servers[server].realmList);
+	await applyRealmlist(clientDir, host);
 };
 
 export const patchConfig = async (forceTweaks = false) => {
@@ -514,7 +551,7 @@ export const patchConfig = async (forceTweaks = false) => {
 	await fs.writeFile(tmpPath, body);
 	await fs.move(tmpPath, configPath, { overwrite: true });
 
-	await applyRealmlist(clientDir, Servers[server].realmList);
+	await applyRealmlist(clientDir, resolveRealmHost(Servers[server].realmList));
 
 	const chosen =
 		repaired.gxResolution ?? (isFirstRun ? seededResolution : undefined);
@@ -522,6 +559,43 @@ export const patchConfig = async (forceTweaks = false) => {
 		Preferences.data = { lastWrittenResolution: chosen };
 
 	Logger.log('Config.wtf successfully patched');
+};
+
+export const adoptSettingsFromFolder = async () => {
+	const { clientDir, config } = Preferences.data;
+	if (!clientDir) return;
+	const raw = await fs
+		.readFile(path.join(clientDir, 'WTF', 'Config.wtf'), 'utf-8')
+		.catch(() => '');
+	const cvars: Record<string, string> = Object.fromEntries(
+		raw
+			.split(/\r?\n/)
+			.map(l => l.match(/SET (\w+) "(.*)"/))
+			.filter((m): m is RegExpMatchArray => !!m)
+			.map(m => [m[1], m[2]])
+	);
+	const locale = (Object.keys(LOCALES) as (keyof typeof LOCALES)[]).find(
+		k => carrierName(LOCALES[k].index) === cvars.locale
+	);
+	const raidVisuals = await fs.pathExists(
+		path.join(clientDir, 'Data', 'patch-O.mpq')
+	);
+	Preferences.data = {
+		...(locale ? { locale, patchedLocale: locale } : {}),
+		shareDownloads: false,
+		config: {
+			...config,
+			raidVisuals,
+			...(cvars.BackgroundSound !== undefined
+				? { soundInBackground: cvars.BackgroundSound === '1' }
+				: {})
+		}
+	};
+	Logger.warn(
+		`Settings taken from the game folder: language ${
+			locale ?? '(not set)'
+		}, raid visuals ${raidVisuals ? 'on' : 'off'}, sharing off`
+	);
 };
 
 export const ensureDxvkConf = async (clientDir: string) => {
@@ -534,7 +608,7 @@ export const ensureDxvkConf = async (clientDir: string) => {
 			'# Cap the texture memory the 32-bit client believes it has so it cannot',
 			'# over-commit its address space (the common DXVK out-of-memory crash).',
 			'd3d9.maxAvailableMemory = 2048',
-			'd3d9.maxFrameLatency = 1',
+			'd3d9.maxFrameLatency = 2',
 			'dxvk.numCompilerThreads = 2',
 			'dxvk.logLevel = none',
 			''

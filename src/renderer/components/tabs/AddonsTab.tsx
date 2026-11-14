@@ -55,7 +55,10 @@ const AddonsTab = () => {
 		...data.available.map(a => [a.folder, 'available']),
 		...Object.values(data.addons).map(a => [
 			a.folder,
-			a.progress ?? (a.status === 'upToDate' ? 'installed' : 'available')
+			a.progress ??
+				(a.status === 'upToDate' || a.status === 'custom'
+					? 'installed'
+					: 'available')
 		])
 	]);
 

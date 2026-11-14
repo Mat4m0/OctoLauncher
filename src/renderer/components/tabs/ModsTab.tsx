@@ -35,6 +35,32 @@ const RowState = ({ row }: { row: ModRowStatus }) => {
 	return null;
 };
 
+const OwnFiles = ({ row }: { row: ModRowStatus }) => {
+	const t = useT();
+	const useLauncher = api.mods.useLauncherVersion.useMutation();
+	if (!row.customFiles?.length) return null;
+	const files = row.customFiles.join(', ');
+	return (
+		<div className="flex items-baseline gap-2">
+			<span className="s1 text-orange" title={t('mods.ownFileHint', { files })}>
+				{t('mods.ownFile')}
+			</span>
+			<span title={t('mods.useLauncherVersionHint', { files })}>
+				<TextButton
+					onClick={() => useLauncher.mutate({ id: row.id })}
+					loading={useLauncher.isLoading}
+					className="!p-0 text-warmGreen"
+				>
+					<span className="s1">{t('mods.useLauncherVersion')}</span>
+				</TextButton>
+			</span>
+			{useLauncher.error && (
+				<span className="s1 text-red">{useLauncher.error.message}</span>
+			)}
+		</div>
+	);
+};
+
 const ModRow = ({ row }: { row: ModRowStatus }) => {
 	const t = useT();
 	const toggle = api.mods.toggle.useMutation();
@@ -43,14 +69,17 @@ const ModRow = ({ row }: { row: ModRowStatus }) => {
 
 	return (
 		<>
-			<div className="flex items-baseline gap-2">
-				{row.recommended && (
-					<Sparkles size={12} className="shrink-0 text-warmGreen" />
-				)}
-				<span className={cls(row.recommended && 'text-warmGreen')}>
-					{row.name}
-				</span>
-				<span className="s1 text-warmGreen">{row.latestVersion}</span>
+			<div className="flex flex-col">
+				<div className="flex items-baseline gap-2">
+					{row.recommended && (
+						<Sparkles size={12} className="shrink-0 text-warmGreen" />
+					)}
+					<span className={cls(row.recommended && 'text-warmGreen')}>
+						{row.name}
+					</span>
+					<span className="s1 text-warmGreen">{row.latestVersion}</span>
+				</div>
+				<OwnFiles row={row} />
 			</div>
 			<CheckboxInput
 				value={row.enabled}

@@ -163,10 +163,22 @@ const AddonListItem = ({ row, dependencies, ...addon }: Props) => {
 					</>
 				) : addon.status === 'invalid' ? (
 					<p className="s1 text-red">{addon.error}</p>
+				) : addon.status === 'custom' ? (
+					<span
+						className="s1 text-orange"
+						title={t('addons.ownCopyHint', { name: addon.folder })}
+					>
+						{t('addons.ownCopy')}
+					</span>
 				) : warnings.length ? (
 					<p className="s1 text-yellow">{warnings[0].short}</p>
 				) : (
 					<p className="s1 text-blueGray/50">
+						{addon.edited && (
+							<span className="text-orange" title={t('addons.editedHint')}>
+								{t('addons.edited')}{' '}
+							</span>
+						)}
 						{addon.status === 'upToDate'
 							? t('addons.upToDate')
 							: !addon.git
@@ -181,6 +193,16 @@ const AddonListItem = ({ row, dependencies, ...addon }: Props) => {
 					>
 						{t('addons.update')}
 					</TextButton>
+				)}
+				{addon.status === 'custom' && (
+					<span title={t('addons.useLauncherVersionHint')}>
+						<TextButton
+							onClick={() => update.mutateAsync({ toUpdate: [addon.folder] })}
+							className="s1 -mx-2 justify-self-end"
+						>
+							{t('addons.useLauncherVersion')}
+						</TextButton>
+					</span>
 				)}
 				{addon.status === 'available' ? (
 					<TextButton

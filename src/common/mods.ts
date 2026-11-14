@@ -5,7 +5,7 @@ export const ModIdSchema = z.enum([
 	'nampower',
 	'multiMonitorFix',
 	'superWow',
-	'transmogFix',
+	'classicApi',
 	'unitXp',
 	'vanillaFixes',
 	'vanillaHelpers'
@@ -46,6 +46,8 @@ export type ModEntry = {
 	registerInDllsTxt?: string;
 	// hidden from the Mods tab, never enabled on fresh installs; existing installs keep it
 	disabled?: boolean;
+	// not in the client torrent: fetched only when the player turns it on, removed when turned off
+	separateDownload?: boolean;
 };
 
 export const MODS: ModEntry[] = [
@@ -56,14 +58,16 @@ export const MODS: ModEntry[] = [
 		description: 'Enables Vulkan based rendering mode for better performance.',
 		recommended: true,
 		repoUrl: 'https://gitlab.com/Ph42oN/dxvk-gplasync',
+		// fallback for the client download's copy; pinned to a commit since a branch path can change
 		source: {
 			kind: 'archive',
-			url: 'https://gitlab.com/Ph42oN/dxvk-gplasync/-/raw/main/releases/dxvk-gplasync-v2.7.1-1.tar.gz?ref_type=heads',
+			url: 'https://gitlab.com/Ph42oN/dxvk-gplasync/-/raw/159ee8ef743d18769dfea284ea95393aca6b8421/releases/dxvk-gplasync-v2.7.1-1.tar.gz',
 			pinnedTag: 'v2.7.1-1',
 			format: 'tar.gz',
 			extractMap: {
 				'dxvk-gplasync-v2.7.1-1/x32/d3d9.dll': 'd3d9.dll'
-			}
+			},
+			sha256: '590050b88be7b156cf641abe762e1ad47ebbe828f7f0edb2970aa4716ee3af6d'
 		}
 	},
 	{
@@ -124,24 +128,30 @@ export const MODS: ModEntry[] = [
 			}
 		},
 		registerInDllsTxt: 'SuperWoWhook.dll',
-		// disabled 2026-08-08 pending distribution permission; delete this line to re-enable
+		// disabled pending distribution permission; delete this line to re-enable
 		disabled: true
 	},
 	{
-		id: 'transmogFix',
-		name: 'transmogFix',
-		version: 'v0.7.0',
+		id: 'classicApi',
+		name: 'ClassicAPI',
+		version: 'v1.15.16',
 		description:
-			"A client-side fix that eliminates frame drops caused by the server's transmogrification durability workaround.",
-		repoUrl: 'https://codeberg.org/MarcelineVQ/WeirdUtils',
+			'Backports 550+ modern WoW API functions, 50+ events, and Lua 5.1 into the 1.12 client, so modern addons run with little or no change. Required by the ClassicAPI addon variants.',
+		repoUrl: 'https://github.com/brues-code/ClassicAPI',
 		requires: ['vanillaFixes'],
 		source: {
 			kind: 'directFile',
-			url: 'https://codeberg.org/MarcelineVQ/WeirdUtils/releases/download/v0.7.0/transmogfix.dll',
-			pinnedTag: 'v0.7.0',
-			assetName: 'transmogfix.dll'
+			url: 'https://github.com/brues-code/ClassicAPI/releases/download/v1.15.16/ClassicAPI.dll',
+			apiUrl:
+				'https://api.github.com/repos/brues-code/ClassicAPI/releases/latest',
+			parseLatest: 'githubRelease',
+			pinnedTag: 'v1.15.16',
+			assetName: 'ClassicAPI.dll',
+			// injected into the game client, so never accept a changed download
+			sha256: 'e34886fb9725b9059375a5c37bff81ce220633c4e2c39719ef3223a6b8fc703d'
 		},
-		registerInDllsTxt: 'transmogfix.dll'
+		registerInDllsTxt: 'ClassicAPI.dll',
+		separateDownload: true
 	},
 	{
 		id: 'unitXp',

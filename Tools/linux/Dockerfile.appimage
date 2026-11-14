@@ -1,0 +1,34 @@
+# Linux AppImage build of the launcher (production or PTR). Run through Tools/linux/build-appimage.sh,
+# which sends a `git archive` of the repo plus resources/aria2c (Tools/linux/aria2c) as the context.
+# Debian 11 (glibc 2.31) so the AppImage runs on Ubuntu 20.04+, Debian 11+, Fedora, Arch and SteamOS.
+FROM node:20-bullseye AS build
+ARG MODE=production
+ARG JOBS=2
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY . .
+RUN test -x resources/aria2c && resources/aria2c --version | head -1
+# Install scripts are skipped; the one native module, stormlib-node, is built below against Electron's
+# headers, with libstdc++ linked statically so it does not depend on the player's C++ runtime.
+RUN npm ci --ignore-scripts --no-audit --no-fund
+RUN ELECTRON_VERSION="$(node -p "require('electron/package.json').version")" \
+ && cd node_modules/stormlib-node \
+ && export npm_config_runtime=electron npm_config_target="$ELECTRON_VERSION" \
+           npm_config_disturl=https://electronjs.org/headers npm_config_arch=x64 \
+           JOBS="$JOBS" LDFLAGS="-static-libstdc++ -static-libgcc" \
+ && npm run configure && npm run build && npm run ts:build \
+ && test -f dist/stormlib.node && ls -la dist/
+RUN node scripts/scrub-native-paths.cjs
+RUN if [ "$MODE" = ptr ]; then \
+      npx electron-vite build --mode ptr && npx electron-builder --linux AppImage --config electron-builder.ptr.yml; \
+    else \
+      npx electron-vite build && npx electron-builder --linux AppImage --config electron-builder.yml; \
+    fi
+RUN mkdir /out \
+ && cp -v dist*/*.AppImage dist*/latest-linux.yml /out/ \
+ && (cp -v dist*/*.AppImage.blockmap /out/ 2>/dev/null || true)
+
+FROM scratch AS out
+COPY --from=build /out/ /

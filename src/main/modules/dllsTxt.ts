@@ -2,6 +2,8 @@ import path from 'path';
 
 import fs from 'fs-extra';
 
+import { isLinux, toWinePath } from './platform';
+
 let queue: Promise<unknown> = Promise.resolve();
 
 const serial = <T>(fn: () => Promise<T>): Promise<T> => {
@@ -29,7 +31,9 @@ const writeCache = async (clientDir: string, names: string[]) => {
 		await fs.remove(cache).catch(() => {});
 		return;
 	}
-	const body = names.map(n => path.win32.join(clientDir, n)).join('\r\n');
+	// VanillaFixes compares these with its own Windows paths, so use the Wine view under Wine
+	const base = isLinux ? toWinePath(clientDir) : clientDir;
+	const body = names.map(n => path.win32.join(base, n)).join('\r\n');
 	await fs.writeFile(cache, body, 'utf8').catch(() => {});
 };
 

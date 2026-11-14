@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
 	if (mode === 'ptr') {
 		const realm = loadEnv(mode, process.cwd(), 'MAIN_VITE_')
 			.MAIN_VITE_PTR_REALMLIST;
-		if (!realm || realm === 'octowow.st')
+		if (!realm || realm === 'play.octowow.st' || realm === 'octowow.st')
 			throw new Error(
 				'PTR build needs MAIN_VITE_PTR_REALMLIST set to a non-prod realm host'
 			);

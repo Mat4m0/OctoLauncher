@@ -48,7 +48,6 @@ const PreferencesDialog = ({ close }: Props) => {
 	const repair = api.mods.repair.useMutation();
 	const openInstallFolder = api.general.openInstallFolder.useMutation();
 	const openLogFile = api.general.openLogFile.useMutation();
-	const addExclusion = api.general.addDefenderExclusion.useMutation();
 
 	const { handleSubmit, watch, setValue, reset } = useForm({
 		defaultValues: pref ?? {},
@@ -168,31 +167,24 @@ const PreferencesDialog = ({ close }: Props) => {
 					>
 						{t('prefs.openLogFile')}
 					</TextButton>
-					<div className="flex items-start">
-						<TextButton
-							icon={ShieldAlert}
-							onClick={() => addExclusion.mutateAsync()}
-							loading={addExclusion.isLoading}
-							className="!items-start text-left text-orange"
-						>
-							{t('prefs.allowThroughAntivirus')}
-						</TextButton>
-						{/* sits on the label's first line even when a locale wraps it */}
-						<TextButton
-							icon={HelpCircle}
-							size={14}
-							onClick={() => window.dispatchEvent(new Event('av-help'))}
-							title={t('av.whatAllowDoesTitle')}
-							className="mt-[14px] !p-0 text-yellow hocus:!text-yellow"
-						/>
-					</div>
-					{addExclusion.data?.ok === true && (
-						<span className="s1 text-warmGreen">
-							{t('prefs.exclusionAdded')}
-						</span>
-					)}
-					{addExclusion.data?.ok === false && (
-						<span className="s1 text-orange">{addExclusion.data.error}</span>
+					{window.electron?.process?.platform !== 'linux' && (
+						<div className="flex items-start">
+							<TextButton
+								icon={ShieldAlert}
+								onClick={() => window.dispatchEvent(new Event('av-guide'))}
+								className="!items-start text-left text-orange"
+							>
+								{t('prefs.allowThroughAntivirus')}
+							</TextButton>
+							{/* sits on the label's first line even when a locale wraps it */}
+							<TextButton
+								icon={HelpCircle}
+								size={14}
+								onClick={() => window.dispatchEvent(new Event('av-help'))}
+								title={t('av.howToAllowTitle')}
+								className="mt-[14px] !p-0 text-yellow hocus:!text-yellow"
+							/>
+						</div>
 					)}
 				</div>
 

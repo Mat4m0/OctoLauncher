@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ShieldAlert, HelpCircle } from 'lucide-react';
+import { Copy, HelpCircle, RotateCcw, ShieldAlert } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 import { api } from '~renderer/utils/api';
@@ -9,6 +9,15 @@ import { useT } from '~renderer/i18n';
 import TextButton from './styled/TextButton';
 
 const DETECTION = 'Trojan:Win32/Vigorf.A';
+
+const RESTORE_FAILURE_KEYS = {
+	no_client: 'av.restoreNoClient',
+	game_running: 'av.restoreGameRunning',
+	busy: 'av.restoreBusy',
+	server_unreachable: 'av.restoreServer',
+	incomplete: 'av.restoreIncomplete',
+	failed: 'av.restoreFailed'
+} as const;
 
 const AntivirusModal = () => {
 	const t = useT();
@@ -33,8 +42,6 @@ const AntivirusModal = () => {
 		if (settled) refetchQuarantined();
 	}, [updateState, settled, refetchQuarantined]);
 
-	const addExclusion = api.general.addDefenderExclusion.useMutation();
-
 	const blocked = [
 		...new Set([
 			...(quarantined ?? []),
@@ -48,23 +55,110 @@ const AntivirusModal = () => {
 	const dialogRef = useRef<HTMLDialogElement>(null);
 	const [view, setView] = useState<'av' | 'why' | null>(null);
 
+	const { data: folders } = api.general.defenderFolders.useQuery(undefined, {
+		enabled: view === 'av',
+		refetchOnWindowFocus: false
+	});
+	const openSettings = api.general.openDefenderSettings.useMutation();
+
+	const checkAv = api.general.checkAntivirus.useMutation();
+	const restoreAv = api.general.restoreBlockedFiles.useMutation();
+	const busy = checkAv.isLoading || restoreAv.isLoading;
+	const [feedback, setFeedback] = useState<{
+		tone: 'ok' | 'warn';
+		text: string;
+	} | null>(null);
+	const list = (names: string[]) => names.join(', ');
+
+	const checkAgain = async () => {
+		if (busy) return;
+		setFeedback(null);
+		try {
+			const r = await checkAv.mutateAsync();
+			setFeedback(
+				r.blocked.length === 0
+					? { tone: 'ok', text: t('av.allClear') }
+					: {
+							tone: 'warn',
+							text: t('av.checkStillBlocked', { files: list(r.blocked) })
+					  }
+			);
+		} catch {
+			setFeedback({ tone: 'warn', text: t('av.checkFailed') });
+		} finally {
+			void refetchQuarantined();
+		}
+	};
+
+	const restore = async () => {
+		if (busy) return;
+		setFeedback(null);
+		try {
+			const r = await restoreAv.mutateAsync();
+			if (!r.ok)
+				setFeedback({ tone: 'warn', text: t(RESTORE_FAILURE_KEYS[r.reason]) });
+			else if (r.stillBlocked.length === 0)
+				setFeedback({
+					tone: 'ok',
+					text: r.restored.length
+						? t('av.restoreDoneFiles', { files: list(r.restored) })
+						: t('av.allClear')
+				});
+			else if (r.restored.length)
+				setFeedback({
+					tone: 'warn',
+					text: t('av.restorePartial', {
+						restored: list(r.restored),
+						files: list(r.stillBlocked)
+					})
+				});
+			else
+				setFeedback({
+					tone: 'warn',
+					text: t('av.restoreNone', { files: list(r.stillBlocked) })
+				});
+		} catch {
+			setFeedback({ tone: 'warn', text: t('av.restoreFailed') });
+		} finally {
+			void refetchQuarantined();
+		}
+	};
+
+	const [copied, setCopied] = useState<string | null>(null);
+	const copy = (text: string) =>
+		navigator.clipboard
+			.writeText(text)
+			.then(() => {
+				setCopied(text);
+				setTimeout(() => setCopied(c => (c === text ? null : c)), 1500);
+			})
+			.catch(() => undefined);
+
 	useEffect(() => {
 		if (view) {
 			// showModal() throws (and crashes to the error screen) if already open, e.g. the av<->why switch
 			if (!dialogRef.current?.open) dialogRef.current?.showModal();
 			(document.activeElement as HTMLElement | null)?.blur();
-		} else dialogRef.current?.close();
+		} else {
+			dialogRef.current?.close();
+			setFeedback(null);
+		}
 	}, [view]);
 
 	useEffect(() => {
 		if (blockedKey) setView('av');
 	}, [blockedKey]);
 
-	// The settings dialog opens the explainer straight from its antivirus button.
+	// The settings dialog opens the explainer or the guide from its antivirus buttons.
 	useEffect(() => {
-		const open = () => setView('why');
-		window.addEventListener('av-help', open);
-		return () => window.removeEventListener('av-help', open);
+		const openWhy = () => setView('why');
+		const openGuide = () => setView('av');
+		window.addEventListener('av-help', openWhy);
+		window.addEventListener('av-guide', openGuide);
+		return () => {
+			window.removeEventListener('av-help', openWhy);
+			window.removeEventListener('av-guide', openGuide);
+		};
 	}, []);
 
 	const names = blockedKey ? blockedKey.split(',') : [];
@@ -76,19 +170,82 @@ const AntivirusModal = () => {
 			className="h-full w-full items-center justify-center bg-[transparent] backdrop:backdrop-blur-sm [&[open]]:flex"
 		>
 			{view === 'av' && (
-				<div className="tw-dialog !w-fit min-w-[380px] max-w-[480px] !gap-3">
-					<h3 className="tw-color">{t('av.blockedTitle')}</h3>
-					<p className="s1">
-						{names.length === 1 ? t('av.blockedOne') : t('av.blockedMany')}
-					</p>
-					<ul className="gap-0.5 flex flex-col pl-1">
-						{names.map(n => (
-							<li key={n} className="s1 text-orange">
-								• {n}
+				<div className="tw-dialog !w-fit min-w-[380px] max-w-[520px] !gap-3">
+					<h3 className="tw-color">
+						{names.length ? t('av.blockedTitle') : t('av.howToAllowTitle')}
+					</h3>
+					{names.length > 0 && (
+						<>
+							<p className="s1">
+								{names.length === 1 ? t('av.blockedOne') : t('av.blockedMany')}
+							</p>
+							<ul className="gap-0.5 flex flex-col pl-1">
+								{names.map(n => (
+									<li key={n} className="s1 text-orange">
+										• {n}
+									</li>
+								))}
+							</ul>
+							<p className="s1 text-blueGray">{t('av.blockedExplain')}</p>
+						</>
+					)}
+					<p className="s1 text-blueGray">{t('av.guideIntro')}</p>
+
+					<p className="s1">{t('av.step1')}</p>
+					<TextButton
+						icon={ShieldAlert}
+						loading={openSettings.isLoading}
+						onClick={() => openSettings.mutate()}
+						className="self-start text-orange"
+					>
+						{t('av.openWindowsSecurity')}
+					</TextButton>
+					{openSettings.data === false && (
+						<span className="s1 text-orange">{t('av.openFailed')}</span>
+					)}
+					<ul className="flex flex-col gap-1 pl-1">
+						{(folders ?? []).map(f => (
+							<li key={f} className="s1 flex items-center gap-2">
+								<span className="min-w-0 break-all text-warmGreen">{f}</span>
+								<TextButton
+									icon={Copy}
+									size={14}
+									onClick={() => void copy(f)}
+									className="shrink-0 !p-0 text-blueGray"
+								>
+									{copied === f ? t('av.copied') : t('av.copy')}
+								</TextButton>
 							</li>
 						))}
 					</ul>
-					<p className="s1 text-blueGray">{t('av.blockedExplain')}</p>
+
+					<p className="s1">{t('av.step2')}</p>
+					<TextButton
+						icon={RotateCcw}
+						loading={restoreAv.isLoading}
+						disabled={busy}
+						onClick={() => void restore()}
+						className="self-start text-warmGreen"
+					>
+						{t('av.restoreFiles')}
+					</TextButton>
+					{restoreAv.isLoading && (
+						<span className="s1 text-blueGray">{t('av.restoring')}</span>
+					)}
+					{checkAv.isLoading && (
+						<span className="s1 text-blueGray">{t('av.checking')}</span>
+					)}
+					{feedback && (
+						<span
+							role="status"
+							className={`s1 ${
+								feedback.tone === 'ok' ? 'text-warmGreen' : 'text-orange'
+							}`}
+						>
+							{feedback.text}
+						</span>
+					)}
+
 					<TextButton
 						icon={HelpCircle}
 						onClick={() => setView('why')}
@@ -96,21 +253,14 @@ const AntivirusModal = () => {
 					>
 						{t('av.whyHappening')}
 					</TextButton>
-					<TextButton
-						icon={ShieldAlert}
-						loading={addExclusion.isLoading}
-						onClick={() => addExclusion.mutate()}
-						className="self-start text-orange"
-					>
-						{t('av.allowThrough')}
-					</TextButton>
-					{addExclusion.data?.ok === true && (
-						<span className="s1 text-warmGreen">{t('av.addedRetry')}</span>
-					)}
-					{addExclusion.data?.ok === false && (
-						<span className="s1 text-orange">{addExclusion.data.error}</span>
-					)}
-					<div className="mt-1 flex justify-end">
+					<div className="mt-1 flex justify-end gap-3">
+						<TextButton
+							onClick={() => void checkAgain()}
+							disabled={busy}
+							className="text-blueGray"
+						>
+							{t('av.checkAgain')}
+						</TextButton>
 						<TextButton onClick={() => setView(null)} className="text-green">
 							{t('av.close')}
 						</TextButton>
@@ -178,44 +328,18 @@ const AntivirusModal = () => {
 						</div>
 						<div>
 							<p className="tw-color text-[21px] leading-tight">
-								{t('av.whatAllowDoesTitle')}
+								{t('av.howToAllowTitle')}
 							</p>
+							<p className="s1 mt-1 text-blueGray">{t('av.howToAllowText')}</p>
 							<p className="s1 mt-1 text-blueGray">
-								{t('av.whatAllowDoesIntro')}{' '}
-								<span className="text-warmGreen">Add-MpPreference</span>{' '}
-								{t('av.whatAllowDoesIntroAfter')}
-							</p>
-							<ul className="mt-1 flex flex-col gap-1 pl-1">
-								<li className="s1 text-blueGray">
-									{t('av.exclusionFoldersBefore')}{' '}
-									<span className="text-warmGreen">{t('av.gameFolder')}</span>{' '}
-									{t('av.exclusionFoldersAnd')}{' '}
-									<span className="text-warmGreen">
-										{t('av.launcherFolder')}
-									</span>
-									{t('av.exclusionFoldersAfter')}
-								</li>
-								<li className="s1 text-blueGray">
-									<span className="text-warmGreen">WoW.exe</span>{' '}
-									{t('av.exclusionExesAnd')}{' '}
-									<span className="text-warmGreen">VanillaFixes.exe</span>{' '}
-									{t('av.exclusionExesAfter')}
-								</li>
-							</ul>
-							<p className="s1 mt-1 text-blueGray">
-								{t('av.whatAllowDoesOutro')}
+								{t('av.howToAllowSafety')}
 							</p>
 						</div>
 					</div>
 					<div className="flex items-center justify-end gap-3">
-						{names.length > 0 && (
-							<TextButton
-								onClick={() => setView('av')}
-								className="text-blueGray"
-							>
-								{t('av.back')}
-							</TextButton>
-						)}
+						<TextButton onClick={() => setView('av')} className="text-blueGray">
+							{t('av.back')}
+						</TextButton>
 						<TextButton onClick={() => setView(null)} className="text-green">
 							{t('av.close')}
 						</TextButton>

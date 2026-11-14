@@ -29,6 +29,11 @@ const SelfUpdateBanner = () => {
 		onData: setStatus
 	});
 	const install = api.selfUpdater.install.useMutation();
+	const [gameBusy, setGameBusy] = useState(false);
+	api.updater.observe.useSubscription(undefined, {
+		onData: ({ state }) =>
+			setGameBusy(state === 'verifying' || state === 'updating')
+	});
 
 	if (
 		status.state === 'idle' ||
@@ -64,7 +69,7 @@ const SelfUpdateBanner = () => {
 				<Button
 					primary
 					onClick={() => install.mutateAsync()}
-					disabled={install.isLoading}
+					disabled={install.isLoading || gameBusy}
 				>
 					{t('misc.selfUpdateInstallNow')}
 				</Button>

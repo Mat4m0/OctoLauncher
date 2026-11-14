@@ -4,6 +4,7 @@ import Logger from 'electron-log/main';
 import { is } from '@electron-toolkit/utils';
 
 import Observable from './observable';
+import Updater from './updater';
 
 export type SelfUpdaterStatus =
 	| { state: 'idle'; currentVersion: string }
@@ -106,6 +107,14 @@ class SelfUpdaterClass extends Observable<SelfUpdaterStatus> {
 		if (this._value.state !== 'ready') {
 			Logger.warn(
 				`[selfUpdater] triggerInstall called in state ${this._value.state}, ignoring`
+			);
+			return;
+		}
+		// quitting stops aria2 mid-write and leaves the files it was writing full of holes
+		const game = Updater.status?.state;
+		if (Updater.busy || game === 'verifying' || game === 'updating') {
+			Logger.warn(
+				'[selfUpdater] install clicked while the game files update, ignoring'
 			);
 			return;
 		}
