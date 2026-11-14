@@ -5,10 +5,11 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils';
 import { createIPCHandler } from 'electron-trpc/main';
 import Logger from 'electron-log/main';
 
-import icon from '~build/icon.png?asset';
 import { PreferencesSchema } from '~common/schemas';
 
 import { appRouter } from './api/root';
+import { appIcon } from './modules/appIcon';
+import { isLinux } from './modules/platform';
 import { stopSyncing, stopSeeding } from './modules/aria2';
 import Preferences from './modules/preferences';
 import { adoptSettingsFromFolder } from './modules/patcher';
@@ -73,11 +74,12 @@ const createWindow = async () => {
 		maximized: false
 	};
 
+	const icon = appIcon();
 	mainWindow = new BrowserWindow({
 		...position,
 		minWidth: 1000,
 		minHeight: 700,
-		icon,
+		...(icon ? { icon } : {}),
 		frame: false,
 		resizable: true,
 		maximizable: true,
@@ -90,6 +92,8 @@ const createWindow = async () => {
 		}
 	});
 
+	// some Linux window managers only take the icon when it is set on the existing window
+	if (icon && isLinux) mainWindow.setIcon(icon);
 	if (maximized) mainWindow.maximize();
 
 	mainWindow.webContents.on('render-process-gone', (_e, details) => {

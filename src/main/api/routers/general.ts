@@ -17,11 +17,13 @@ import {
 	checkAntivirusBlocks,
 	restoreBlockedFiles
 } from '~main/modules/avRestore';
+import { listProtonVersions } from '~main/modules/proton';
 
 import { createTRPCRouter, publicProcedure } from '../trpc';
 
 export const generalRouter = createTRPCRouter({
 	appVersion: publicProcedure.query(() => app.getVersion()),
+	protonVersions: publicProcedure.query(() => listProtonVersions()),
 	hardware: publicProcedure.query(() => {
 		const hardware = Preferences.data.hardware ?? null;
 		return { hardware, recommendedFarClip: recommendFarClip(hardware) };

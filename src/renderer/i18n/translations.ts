@@ -312,6 +312,13 @@ const enUS: Dict = {
 	'prefs.cleanWdb': 'Clean WDB on each launch',
 	'prefs.minimizeToTray': 'Minimize to tray while playing',
 	'prefs.shareDownloads': 'Help share downloads with other players',
+	'prefs.proton': 'PROTON:',
+	'prefs.useProton': 'Start the game with Proton',
+	'prefs.protonVersion': 'Proton version',
+	'prefs.protonNone':
+		"No Proton found. Install Proton in Steam, or put GE-Proton in Steam's compatibilitytools.d folder.",
+	'launch.protonMissing':
+		'The Proton version chosen in Settings was not found. Choose another one, or turn Proton off, then click Play again.',
 	'prefs.save': 'Save',
 	'prefs.installLocationTitle': 'Install location',
 	'prefs.portableInfo':
@@ -584,6 +591,13 @@ const deDE: Dict = {
 	'prefs.generalSettings': 'ALLGEMEINE EINSTELLUNGEN:',
 	'prefs.cleanWdb': 'WDB bei jedem Start leeren',
 	'prefs.minimizeToTray': 'Während des Spielens in den Infobereich minimieren',
+	'prefs.proton': 'PROTON:',
+	'prefs.useProton': 'Spiel mit Proton starten',
+	'prefs.protonVersion': 'Proton-Version',
+	'prefs.protonNone':
+		'Kein Proton gefunden. Installiere Proton über Steam oder lege GE-Proton in den Steam-Ordner compatibilitytools.d.',
+	'launch.protonMissing':
+		'Die in den Einstellungen gewählte Proton-Version wurde nicht gefunden. Wähle eine andere oder schalte Proton aus und klicke dann erneut auf „Spielen“.',
 	'prefs.save': 'Speichern',
 	'prefs.installLocationTitle': 'Installationsort',
 	'prefs.portableInfo':
@@ -832,6 +846,12 @@ const zhCN: Dict = {
 	'prefs.generalSettings': '常规设置：',
 	'prefs.cleanWdb': '每次启动时清理 WDB',
 	'prefs.minimizeToTray': '游戏时最小化到托盘',
+	'prefs.proton': 'PROTON：',
+	'prefs.useProton': '使用 Proton 启动游戏',
+	'prefs.protonVersion': 'Proton 版本',
+	'prefs.protonNone':
+		'未找到 Proton。请在 Steam 中安装 Proton，或将 GE-Proton 放入 Steam 的 compatibilitytools.d 文件夹。',
+	'launch.protonMissing': '未找到设置中选择的 Proton 版本。请选择其他版本或关闭 Proton，然后再次点击开始游戏。',
 	'prefs.save': '保存',
 	'prefs.installLocationTitle': '安装位置',
 	'prefs.portableInfo':
@@ -1096,6 +1116,13 @@ const esES: Dict = {
 	'prefs.generalSettings': 'AJUSTES GENERALES:',
 	'prefs.cleanWdb': 'Limpiar WDB en cada inicio',
 	'prefs.minimizeToTray': 'Minimizar a la bandeja mientras juegas',
+	'prefs.proton': 'PROTON:',
+	'prefs.useProton': 'Iniciar el juego con Proton',
+	'prefs.protonVersion': 'Versión de Proton',
+	'prefs.protonNone':
+		'No se encontró Proton. Instala Proton en Steam o coloca GE-Proton en la carpeta compatibilitytools.d de Steam.',
+	'launch.protonMissing':
+		'No se encontró la versión de Proton elegida en Configuración. Elige otra o desactiva Proton y pulsa Jugar de nuevo.',
 	'prefs.save': 'Guardar',
 	'prefs.installLocationTitle': 'Ubicación de instalación',
 	'prefs.portableInfo':
@@ -1364,6 +1391,13 @@ const ptBR: Dict = {
 	'prefs.generalSettings': 'CONFIGURAÇÕES GERAIS:',
 	'prefs.cleanWdb': 'Limpar WDB a cada inicialização',
 	'prefs.minimizeToTray': 'Minimizar para a bandeja durante o jogo',
+	'prefs.proton': 'PROTON:',
+	'prefs.useProton': 'Iniciar o jogo com o Proton',
+	'prefs.protonVersion': 'Versão do Proton',
+	'prefs.protonNone':
+		'Nenhum Proton encontrado. Instale o Proton pela Steam ou coloque o GE-Proton na pasta compatibilitytools.d da Steam.',
+	'launch.protonMissing':
+		'A versão do Proton escolhida em Configurações não foi encontrada. Escolha outra ou desative o Proton e clique em Jogar novamente.',
 	'prefs.save': 'Salvar',
 	'prefs.installLocationTitle': 'Local de instalação',
 	'prefs.portableInfo':
@@ -1626,6 +1660,13 @@ const ruRU: Dict = {
 	'prefs.generalSettings': 'ОБЩИЕ НАСТРОЙКИ:',
 	'prefs.cleanWdb': 'Очищать WDB при каждом запуске',
 	'prefs.minimizeToTray': 'Сворачивать в трей во время игры',
+	'prefs.proton': 'PROTON:',
+	'prefs.useProton': 'Запускать игру через Proton',
+	'prefs.protonVersion': 'Версия Proton',
+	'prefs.protonNone':
+		'Proton не найден. Установите Proton в Steam или поместите GE-Proton в папку compatibilitytools.d в Steam.',
+	'launch.protonMissing':
+		'Версия Proton, выбранная в настройках, не найдена. Выберите другую или отключите Proton, затем нажмите Играть ещё раз.',
 	'prefs.save': 'Сохранить',
 	'prefs.installLocationTitle': 'Папка установки',
 	'prefs.portableInfo':
@@ -1869,6 +1910,13 @@ const koKR: Dict = {
 	'prefs.generalSettings': '일반 설정:',
 	'prefs.cleanWdb': '게임을 시작할 때마다 WDB 정리',
 	'prefs.minimizeToTray': '게임 중 트레이로 최소화',
+	'prefs.proton': 'PROTON:',
+	'prefs.useProton': 'Proton으로 게임 실행',
+	'prefs.protonVersion': 'Proton 버전',
+	'prefs.protonNone':
+		'Proton을 찾을 수 없습니다. Steam에서 Proton을 설치하거나 GE-Proton을 Steam의 compatibilitytools.d 폴더에 넣으세요.',
+	'launch.protonMissing':
+		'‘설정’에서 선택한 Proton 버전을 찾을 수 없습니다. 다른 버전을 선택하거나 Proton을 끈 후 ‘게임 시작’을 다시 클릭하세요.',
 	'prefs.save': '저장',
 	'prefs.installLocationTitle': '설치 위치',
 	'prefs.portableInfo':
@@ -2192,6 +2240,13 @@ const frFR: Dict = {
 	'prefs.generalSettings': 'PARAMÈTRES GÉNÉRAUX :',
 	'prefs.cleanWdb': 'Vider le dossier WDB à chaque lancement',
 	'prefs.minimizeToTray': 'Réduire dans la zone de notification pendant le jeu',
+	'prefs.proton': 'PROTON :',
+	'prefs.useProton': 'Lancer le jeu avec Proton',
+	'prefs.protonVersion': 'Version de Proton',
+	'prefs.protonNone':
+		'Aucun Proton trouvé. Installez Proton via Steam ou placez GE-Proton dans le dossier compatibilitytools.d de Steam.',
+	'launch.protonMissing':
+		'La version de Proton choisie dans les Paramètres est introuvable. Choisissez-en une autre ou désactivez Proton, puis cliquez à nouveau sur « Jouer ».',
 	'prefs.save': 'Enregistrer',
 	'prefs.installLocationTitle': "Emplacement d'installation",
 	'prefs.portableInfo':

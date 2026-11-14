@@ -1,4 +1,4 @@
-import { promises as fsp } from 'fs';
+import fs, { promises as fsp } from 'fs';
 import os from 'os';
 import path from 'path';
 
@@ -9,9 +9,25 @@ export const isLinux = process.platform === 'linux';
 const winePrefix = (): string =>
 	path.resolve(process.env.WINEPREFIX || path.join(os.homedir(), '.wine'));
 
-export const toWinePath = (unixPath: string): string => {
+// a command name looked up on PATH, or a path, that can be run
+export const findOnPath = (cmd: string): string | undefined => {
+	const runnable = (p: string) => {
+		try {
+			fs.accessSync(p, fs.constants.X_OK);
+			return fs.statSync(p).isFile();
+		} catch {
+			return false;
+		}
+	};
+	if (cmd.includes('/')) return runnable(cmd) ? cmd : undefined;
+	for (const dir of (process.env.PATH ?? '').split(path.delimiter))
+		if (dir && runnable(path.join(dir, cmd))) return path.join(dir, cmd);
+	return undefined;
+};
+
+export const toWinePath = (unixPath: string, prefix = winePrefix()): string => {
 	const abs = path.resolve(unixPath);
-	const driveC = path.join(winePrefix(), 'drive_c');
+	const driveC = path.join(prefix, 'drive_c');
 	if (abs === driveC || abs.startsWith(driveC + path.sep))
 		return 'C:\\' + path.relative(driveC, abs).split(path.sep).join('\\');
 	return 'Z:' + abs.split(path.sep).join('\\');

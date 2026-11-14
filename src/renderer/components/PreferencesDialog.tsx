@@ -39,10 +39,16 @@ const MirrorStatus = () => {
 
 type Props = { close: () => void };
 
+const isLinux = window.electron?.process?.platform === 'linux';
+
 const PreferencesDialog = ({ close }: Props) => {
 	const t = useT();
 	const { data: pref } = api.preferences.get.useQuery();
 	const setPref = api.preferences.set.useMutation();
+	const { data: protonVersions = [] } = api.general.protonVersions.useQuery(
+		undefined,
+		{ enabled: isLinux }
+	);
 
 	const verify = api.updater.verify.useMutation();
 	const repair = api.mods.repair.useMutation();
@@ -66,6 +72,18 @@ const PreferencesDialog = ({ close }: Props) => {
 			shouldValidate: true
 		});
 
+	const useProton = !!watch('useProton');
+	const protonPath = watch('protonPath');
+	// with Proton on and the saved one gone (or none chosen yet), take the first one found
+	useEffect(() => {
+		if (!useProton || !protonVersions.length) return;
+		if (!protonVersions.some(v => v.path === protonPath))
+			setValue('protonPath', protonVersions[0].path, {
+				shouldDirty: true,
+				shouldValidate: true
+			});
+	}, [useProton, protonVersions, protonPath, setValue]);
+
 	return (
 		<form
 			className="tw-dialog !w-fit min-w-[480px] max-w-[640px] !gap-1"
@@ -75,7 +93,10 @@ const PreferencesDialog = ({ close }: Props) => {
 					await setPref.mutateAsync({
 						cleanWdb: v.cleanWdb,
 						minimizeToTrayOnPlay: v.minimizeToTrayOnPlay,
-						shareDownloads: v.shareDownloads
+						shareDownloads: v.shareDownloads,
+						...(isLinux
+							? { useProton: v.useProton, protonPath: v.protonPath }
+							: {})
 					});
 					close();
 				} catch (e) {
@@ -167,7 +188,7 @@ const PreferencesDialog = ({ close }: Props) => {
 					>
 						{t('prefs.openLogFile')}
 					</TextButton>
-					{window.electron?.process?.platform !== 'linux' && (
+					{!isLinux && (
 						<div className="flex items-start">
 							<TextButton
 								icon={ShieldAlert}
@@ -207,6 +228,43 @@ const PreferencesDialog = ({ close }: Props) => {
 					/>
 				</div>
 			</div>
+
+			{isLinux && (
+				<div className="flex flex-col">
+					<h4 className="tw-color">{t('prefs.proton')}</h4>
+					<CheckboxInput
+						value={useProton}
+						setValue={setBool('useProton')}
+						label={t('prefs.useProton')}
+					/>
+					{useProton &&
+						(protonVersions.length ? (
+							<label className="s1 flex flex-col gap-1 pl-2 text-blueGray">
+								{t('prefs.protonVersion')}
+								<select
+									className="border border-blueGray/20 bg-darkGray px-2 py-1 text-white outline-none focus:border-warmGreen"
+									value={protonPath ?? ''}
+									onChange={e =>
+										setValue('protonPath', e.target.value, {
+											shouldDirty: true,
+											shouldValidate: true
+										})
+									}
+								>
+									{protonVersions.map(v => (
+										<option key={v.path} value={v.path}>
+											{v.name}
+										</option>
+									))}
+								</select>
+							</label>
+						) : (
+							<span className="s1 pl-2 text-orange">
+								{t('prefs.protonNone')}
+							</span>
+						))}
+				</div>
+			)}
 
 			{saveError && (
 				<span className="s1 self-end text-orange">{saveError}</span>

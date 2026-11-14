@@ -31,6 +31,12 @@ import {
 	loaderExeName
 } from '~main/modules/launchWrapper';
 import { isLinux } from '~main/modules/platform';
+import { protonWinePrefix } from '~main/modules/proton';
+import {
+	ensureGameDesktopEntry,
+	gameEnv,
+	spawnGame
+} from '~main/modules/gameProcess';
 
 import { createTRPCRouter, publicProcedure } from '../trpc';
 
@@ -160,10 +166,20 @@ export const launcherRouter = createTRPCRouter({
 				}
 			}
 
+			// Linux: Proton when it is turned on in Settings ('' = on, but none chosen)
+			const proton =
+				isLinux && Preferences.data.useProton
+					? Preferences.data.protonPath ?? ''
+					: undefined;
+
 			const loaderPath = path.join(clientDir, loaderExeName());
 			const needsLoader = await chainloaderNeeded(clientDir);
 			const useLoader = needsLoader && (await fs.pathExists(loaderPath));
-			if (useLoader) await syncVanillaFixesCache(clientDir);
+			if (useLoader)
+				await syncVanillaFixesCache(
+					clientDir,
+					proton ? protonWinePrefix() : undefined
+				);
 			if (needsLoader && !useLoader)
 				Logger.warn(
 					'VanillaFixes.exe is missing but mods/dlls.txt expect a chainloader; ' +
@@ -171,20 +187,41 @@ export const launcherRouter = createTRPCRouter({
 				);
 
 			const plan = useLoader
-				? resolveLaunch(loaderPath, [gameExeName()], clientDir)
-				: resolveLaunch(exePath, [], clientDir);
+				? await resolveLaunch(loaderPath, [gameExeName()], clientDir, proton)
+				: await resolveLaunch(exePath, [], clientDir, proton);
+			if (plan.missing === 'proton')
+				return {
+					ok: false,
+					error:
+						'The Proton version chosen in Settings was not found. Choose another one, ' +
+						'or turn Proton off, then click Play again.',
+					errorKey: 'launch.protonMissing'
+				};
+			if (plan.missing === 'wine')
+				return {
+					ok: false,
+					error:
+						'Wine is needed to run WoW on Linux. Install it with your package manager ' +
+						'(for example: sudo apt install wine), then press Play again.'
+				};
 			const launchLabel = `${plan.command} ${plan.args.join(' ')}`.trim();
 			Logger.log(
 				`Launching${plan.wrapped ? ' via a wrapper' : ''}: ${launchLabel}` +
 					(plan.env ? ` (env ${Object.keys(plan.env).join(', ')})` : '')
 			);
+			if (isLinux)
+				await ensureGameDesktopEntry(exePath).catch(e =>
+					Logger.warn('Could not write the game desktop entry', e)
+				);
 			let child: ChildProcess;
 			try {
-				child = spawn(plan.command, plan.args, {
-					cwd: clientDir,
-					detached: !minimizeToTrayOnPlay,
-					...(plan.env ? { env: { ...process.env, ...plan.env } } : {})
-				});
+				child = isLinux
+					? await spawnGame(plan.command, plan.args, clientDir, gameEnv(plan.env))
+					: spawn(plan.command, plan.args, {
+							cwd: clientDir,
+							detached: !minimizeToTrayOnPlay,
+							...(plan.env ? { env: { ...process.env, ...plan.env } } : {})
+					  });
 				await new Promise<void>((resolve, reject) => {
 					child.once('spawn', resolve);
 					child.once('error', reject);
@@ -234,13 +271,17 @@ export const launcherRouter = createTRPCRouter({
 						);
 				return true;
 			};
+			// The loader, Proton and the Linux game scope or session can return before the game ends, so
+			// those launches follow the game process itself. A first Proton start builds its prefix first.
+			const followGameProcess = useLoader || isLinux;
+			const appearWithinMs = isLinux ? 120_000 : 30_000;
 			const watchGame = (onExit: () => void) => {
-				if (useLoader) {
+				if (followGameProcess) {
 					void (async () => {
 						try {
 							const started = Date.now();
 							while (
-								Date.now() - started < 30_000 &&
+								Date.now() - started < appearWithinMs &&
 								!(await isGameRunning(exePath))
 							)
 								await delay(1000);

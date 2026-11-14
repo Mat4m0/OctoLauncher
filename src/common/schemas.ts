@@ -88,7 +88,10 @@ export const PreferencesSchema = z.object({
 	mods: z.record(ModStateSchema).default({}),
 	modFileHashes: z.record(z.string()).optional(),
 	hardware: HardwareInfoSchema.optional(),
-	farClipUserSet: z.boolean().optional()
+	farClipUserSet: z.boolean().optional(),
+	// Linux: start the game with Proton (the folder that holds its `proton` script) instead of Wine
+	useProton: f.boolean(),
+	protonPath: z.string().optional()
 });
 export type PreferencesSchema = z.infer<typeof PreferencesSchema>;
 

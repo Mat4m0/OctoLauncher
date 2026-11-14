@@ -1,9 +1,9 @@
 import { Tray, Menu, nativeImage, app } from 'electron';
 import Logger from 'electron-log/main';
 
-import icon from '~build/icon.png?asset';
-
 import { mainWindow } from '~main/index';
+import { appIcon } from '~main/modules/appIcon';
+import { isLinux } from '~main/modules/platform';
 
 let tray: Tray | null = null;
 let isMinimizedToTray = false;
@@ -18,8 +18,12 @@ const restoreWindow = () => {
 
 const ensureTray = () => {
 	if (tray) return tray;
-	const trayIcon = nativeImage.createFromPath(icon).resize({ width: 16, height: 16 });
-	tray = new Tray(trayIcon);
+	// many Linux panels show a 16 px status icon as an empty slot
+	const size = isLinux ? 32 : 16;
+	const icon = appIcon();
+	tray = new Tray(
+		icon ? icon.resize({ width: size, height: size }) : nativeImage.createEmpty()
+	);
 	tray.setToolTip('OctoLauncher');
 	tray.setContextMenu(
 		Menu.buildFromTemplate([

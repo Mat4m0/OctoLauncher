@@ -1,15 +1,23 @@
-// runs the Windows client through a wrapper such as Wine (env vars: Tools/linux/README.md)
+// runs the Windows client through a wrapper such as Wine, or through Proton when it is chosen in
+// Settings (env vars: Tools/linux/README.md)
 
 import fs from 'fs';
 import path from 'path';
 
-import { isLinux } from './platform';
+import { findOnPath, isLinux } from './platform';
+import {
+	isProtonDir,
+	protonCompatDataDir,
+	steamClientDir
+} from './proton';
 
 export type LaunchPlan = {
 	command: string;
 	args: string[];
 	wrapped: boolean;
 	env?: Record<string, string>;
+	// what is missing to start it; nothing is started then
+	missing?: 'wine' | 'proton';
 };
 
 const trimmed = (v: string | undefined): string | undefined => {
@@ -43,11 +51,31 @@ const wineEnv = (
 	return { WINEDLLOVERRIDES: current ? `${current};d3d9=n,b` : 'd3d9=n,b' };
 };
 
-export const resolveLaunch = (
+// `proton` is set when Proton is turned on in Settings (Linux): its folder, or '' when none is chosen
+export const resolveLaunch = async (
 	target: string,
 	trailingArgs: string[],
-	clientDir?: string
-): LaunchPlan => {
+	clientDir?: string,
+	proton?: string
+): Promise<LaunchPlan> => {
+	if (isLinux && proton !== undefined) {
+		const script = path.join(proton, 'proton');
+		if (!proton || !(await isProtonDir(proton)))
+			return { command: script, args: [], wrapped: true, missing: 'proton' };
+		const compatData = protonCompatDataDir();
+		await fs.promises.mkdir(compatData, { recursive: true });
+		return {
+			command: script,
+			args: ['run', target, ...trailingArgs],
+			wrapped: true,
+			env: {
+				STEAM_COMPAT_CLIENT_INSTALL_PATH: await steamClientDir(proton),
+				STEAM_COMPAT_DATA_PATH: compatData,
+				...wineEnv(clientDir)
+			}
+		};
+	}
+
 	const wrapper = wrapperBin();
 	if (!wrapper) return { command: target, args: trailingArgs, wrapped: false };
 
@@ -58,6 +86,7 @@ export const resolveLaunch = (
 		command: wrapper,
 		args: [...extra, target, ...trailingArgs],
 		wrapped: true,
-		env: wineEnv(clientDir)
+		env: wineEnv(clientDir),
+		...(isLinux && !findOnPath(wrapper) ? { missing: 'wine' as const } : {})
 	};
 };

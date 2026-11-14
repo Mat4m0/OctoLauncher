@@ -37,6 +37,8 @@ win:
   extraResources:
     - from: resources/aria2c.exe
       to: aria2c.exe
+    - from: build/icon.png
+      to: icon.png
 # built by Tools/linux/build-appimage.sh
 linux:
   target:
@@ -49,6 +51,8 @@ linux:
   extraResources:
     - from: resources/aria2c
       to: aria2c
+    - from: build/icon.png
+      to: icon.png
 nsis:
   # versioned: differential updates need the old blockmap to stay fetchable
   artifactName: ${productName}_Installer-${version}.${ext}

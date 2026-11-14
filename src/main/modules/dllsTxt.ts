@@ -25,14 +25,18 @@ const dllNames = (lines: string[]) =>
 	lines.map(l => l.trim()).filter(l => l && !l.startsWith('#'));
 
 // keep VanillaFixes' consent cache in step with dlls.txt so it won't re-prompt
-const writeCache = async (clientDir: string, names: string[]) => {
+const writeCache = async (
+	clientDir: string,
+	names: string[],
+	winePrefix?: string
+) => {
 	const cache = path.join(clientDir, 'dlls.txt.cache');
 	if (!names.length) {
 		await fs.remove(cache).catch(() => {});
 		return;
 	}
 	// VanillaFixes compares these with its own Windows paths, so use the Wine view under Wine
-	const base = isLinux ? toWinePath(clientDir) : clientDir;
+	const base = isLinux ? toWinePath(clientDir, winePrefix) : clientDir;
 	const body = names.map(n => path.win32.join(base, n)).join('\r\n');
 	await fs.writeFile(cache, body, 'utf8').catch(() => {});
 };
@@ -49,9 +53,10 @@ const writeLines = async (clientDir: string, lines: string[]) => {
 	await writeCache(clientDir, dllNames(lines));
 };
 
-export const syncVanillaFixesCache = (clientDir: string) =>
+// Play rewrites the cache right before the launch, with the prefix that launch uses (Proton has its own)
+export const syncVanillaFixesCache = (clientDir: string, winePrefix?: string) =>
 	serial(async () =>
-		writeCache(clientDir, dllNames(await readLines(clientDir)))
+		writeCache(clientDir, dllNames(await readLines(clientDir)), winePrefix)
 	);
 
 const matches = (line: string, name: string) =>
