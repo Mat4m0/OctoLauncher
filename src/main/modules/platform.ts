@@ -1,10 +1,13 @@
+import { execFile } from 'child_process';
 import fs, { promises as fsp } from 'fs';
 import os from 'os';
 import path from 'path';
 
-// on Linux the game is still the Windows client, run through Wine
+// on Linux and macOS the game is still the Windows client, run through Wine
 export const isWindows = process.platform === 'win32';
 export const isLinux = process.platform === 'linux';
+export const isMac = process.platform === 'darwin';
+export const usesWine = isLinux || isMac;
 
 const winePrefix = (): string =>
 	path.resolve(process.env.WINEPREFIX || path.join(os.homedir(), '.wine'));
@@ -33,6 +36,20 @@ export const toWinePath = (unixPath: string, prefix = winePrefix()): string => {
 	return 'Z:' + abs.split(path.sep).join('\\');
 };
 
+// macOS has no /proc; ps prints each command line as one string, so match its words
+const macProcessRunning = (matches: (arg: string) => boolean) =>
+	new Promise<boolean>(resolve => {
+		execFile('/bin/ps', ['-axo', 'pid=,command='], (error, stdout) => {
+			if (error) return resolve(false);
+			resolve(
+				stdout.split('\n').some(line => {
+					const [pid, ...words] = line.trim().split(/\s+/);
+					return Number(pid) !== process.pid && words.some(matches);
+				})
+			);
+		});
+	});
+
 // Wine processes carry the Windows exe path in their command line, so scan /proc
 export const wineProcessRunning = async (exeName: string): Promise<boolean> => {
 	const want = exeName.toLowerCase();
@@ -40,6 +57,7 @@ export const wineProcessRunning = async (exeName: string): Promise<boolean> => {
 		const a = arg.toLowerCase();
 		return a === want || a.endsWith('\\' + want) || a.endsWith('/' + want);
 	};
+	if (isMac) return macProcessRunning(matches);
 	try {
 		const pids = (await fsp.readdir('/proc')).filter(d => /^\d+$/.test(d));
 		for (const pid of pids) {

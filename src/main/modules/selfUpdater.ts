@@ -5,6 +5,7 @@ import { is } from '@electron-toolkit/utils';
 
 import Observable from './observable';
 import Updater from './updater';
+import { isMac } from './platform';
 
 export type SelfUpdaterStatus =
 	| { state: 'idle'; currentVersion: string }
@@ -48,6 +49,12 @@ class SelfUpdaterClass extends Observable<SelfUpdaterStatus> {
 		}
 
 		const currentVersion = app.getVersion();
+
+		if (isMac) {
+			Logger.info('[selfUpdater] no macOS update channel is published, skipping');
+			this.status = { state: 'unavailable', currentVersion };
+			return;
+		}
 
 		autoUpdater.logger = Logger;
 		autoUpdater.autoDownload = true;

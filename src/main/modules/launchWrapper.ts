@@ -4,12 +4,9 @@
 import fs from 'fs';
 import path from 'path';
 
-import { findOnPath, isLinux } from './platform';
-import {
-	isProtonDir,
-	protonCompatDataDir,
-	steamClientDir
-} from './proton';
+import { findOnPath, isLinux, isMac } from './platform';
+import { findMacWine, macWinePrefix } from './macWine';
+import { isProtonDir, protonCompatDataDir, steamClientDir } from './proton';
 
 export type LaunchPlan = {
 	command: string;
@@ -37,13 +34,38 @@ const wrapperBin = (): string | undefined => {
 		trimmed(process.env.OCTO_LAUNCH_WRAPPER);
 	if (configured)
 		return configured.toLowerCase() === 'none' ? undefined : configured;
+	if (isMac) return findMacWine() ?? 'wine';
 	return isLinux ? 'wine' : undefined;
+};
+
+// macOS: the launcher's own prefix, and Wine's builtin d3d9 over the Windows dxvk copy in the game
+// folder (dxvk needs Vulkan; Mach9's builtin d3d9 is mtld3d, which draws with Metal directly)
+const macWineEnv = (): Record<string, string> => {
+	const current = process.env.WINEDLLOVERRIDES ?? '';
+	const mtld3d = process.env.MTLD3D_CONFIG ?? '';
+	return {
+		WINEPREFIX: macWinePrefix(),
+		...(process.env.WINEDEBUG ? {} : { WINEDEBUG: '-all' }),
+		...(/d3d9/i.test(current)
+			? {}
+			: { WINEDLLOVERRIDES: current ? `${current};d3d9=b` : 'd3d9=b' }),
+		// mtld3d's overlay cursor: with the hardware cursor every hide/show (WoW hides it while a
+		// mouse button turns the camera) delays the next frame by one refresh, a visible hitch
+		...(/cursor\.software/i.test(mtld3d)
+			? {}
+			: {
+					MTLD3D_CONFIG: mtld3d
+						? `${mtld3d};cursor.software=true`
+						: 'cursor.software=true'
+			  })
+	};
 };
 
 // Wine prefers its builtin d3d9 over the dxvk copy in the game folder
 const wineEnv = (
 	clientDir: string | undefined
 ): Record<string, string> | undefined => {
+	if (isMac) return macWineEnv();
 	if (!isLinux || !clientDir) return undefined;
 	if (!fs.existsSync(path.join(clientDir, 'd3d9.dll'))) return undefined;
 	const current = process.env.WINEDLLOVERRIDES ?? '';
@@ -87,6 +109,8 @@ export const resolveLaunch = async (
 		args: [...extra, target, ...trailingArgs],
 		wrapped: true,
 		env: wineEnv(clientDir),
-		...(isLinux && !findOnPath(wrapper) ? { missing: 'wine' as const } : {})
+		...((isLinux || isMac) && !findOnPath(wrapper)
+			? { missing: 'wine' as const }
+			: {})
 	};
 };

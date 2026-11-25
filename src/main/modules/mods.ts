@@ -22,7 +22,7 @@ import Observable from './observable';
 import Updater from './updater';
 import { addDll, removeDll, hasDll, listDlls } from './dllsTxt';
 import { enumerateDisplays } from './displays';
-import { isWindows } from './platform';
+import { isMac, isWindows } from './platform';
 import {
 	modTargetFiles,
 	classifyModFile,
@@ -48,9 +48,12 @@ const RESERVED_DLLS = new Set([
 	'zlib1.dll'
 ]);
 
+// a mod this platform runs: not disabled, and not one that breaks under Wine on macOS
+const isActive = (m: ModEntry) => !m.disabled && !(isMac && m.macUnsupported);
+
 // files owned by an active built-in mod; a disabled mod's files are fair game to add by hand
 const KNOWN_DLLS = new Set(
-	MODS.filter(m => !m.disabled)
+	MODS.filter(isActive)
 		.flatMap(m => [m.registerInDllsTxt, ...modTargetFiles(m)])
 		.filter((f): f is string => !!f)
 		.map(f => f.toLowerCase())
@@ -201,7 +204,7 @@ class ModsClass extends Observable<ModsStatus> {
 		this._value = {
 			state: 'verifying',
 			dirty: false,
-			mods: MODS.filter(m => !m.disabled).map(m => this.#initialRow(m)),
+			mods: MODS.filter(isActive).map(m => this.#initialRow(m)),
 			custom: this._value.custom,
 			missingFiles: []
 		};
@@ -254,6 +257,8 @@ class ModsClass extends Observable<ModsStatus> {
 	}
 
 	async #syncPreferredMonitor(clientDir: string) {
+		// macOS: the multi-monitor fix does not run there, and displays are only listed on Windows
+		if (isMac) return;
 		const vmmfDll = path.join(clientDir, 'VanillaMultiMonitorFix.dll');
 		if (!(await fs.pathExists(vmmfDll))) return;
 
@@ -331,6 +336,14 @@ class ModsClass extends Observable<ModsStatus> {
 		for (const m of MODS) {
 			// disabled mods: leave dlls.txt and installed state untouched
 			if (m.disabled) continue;
+			// macOS: keep a mod that breaks under Wine out of dlls.txt, files stay in place
+			if (isMac && m.macUnsupported) {
+				if (clientDir && m.registerInDllsTxt)
+					await removeDll(clientDir, m.registerInDllsTxt).catch(e =>
+						Logger.warn(`Could not unlist ${m.registerInDllsTxt}`, e)
+					);
+				continue;
+			}
 
 			const state = Preferences.data?.mods?.[m.id];
 			let installedVersion = state?.installedVersion;
@@ -677,7 +690,7 @@ class ModsClass extends Observable<ModsStatus> {
 		if (!clientDir) return;
 		let changed = false;
 		for (const m of MODS) {
-			if (m.disabled || !m.separateDownload) continue;
+			if (!isActive(m) || !m.separateDownload) continue;
 			const st = Preferences.data?.mods?.[m.id];
 			if (!st?.enabled || !st.installedFiles?.length) continue;
 			const present = (

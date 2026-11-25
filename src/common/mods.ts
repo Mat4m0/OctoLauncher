@@ -46,6 +46,8 @@ export type ModEntry = {
 	registerInDllsTxt?: string;
 	// hidden from the Mods tab, never enabled on fresh installs; existing installs keep it
 	disabled?: boolean;
+	// why it cannot run under Wine on macOS: hidden there and kept out of dlls.txt
+	macUnsupported?: string;
 	// not in the client torrent: fetched only when the player turns it on, removed when turned off
 	separateDownload?: boolean;
 };
@@ -57,6 +59,7 @@ export const MODS: ModEntry[] = [
 		version: 'v2.7.1-1',
 		description: 'Enables Vulkan based rendering mode for better performance.',
 		recommended: true,
+		macUnsupported: "Mach9 draws Direct3D 9 with Metal (mtld3d); this Windows build needs Vulkan",
 		repoUrl: 'https://gitlab.com/Ph42oN/dxvk-gplasync',
 		// fallback for the client download's copy; pinned to a commit since a branch path can change
 		source: {
@@ -92,6 +95,7 @@ export const MODS: ModEntry[] = [
 		version: '0.2',
 		description: 'Fix for larger resolutions or multi monitor setups.',
 		repoUrl: 'https://github.com/Mates1500/VanillaMultiMonitorFix',
+		macUnsupported: 'WoW quits at startup with it under Wine on macOS',
 		requires: ['vanillaFixes'],
 		source: {
 			kind: 'archive',

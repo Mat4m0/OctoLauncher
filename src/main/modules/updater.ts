@@ -10,7 +10,7 @@ import fs from 'fs-extra';
 import Logger from 'electron-log/main';
 
 import { nestedGet, nestedSet, formatFileSize } from '~common/utils';
-import { wineProcessRunning } from '~main/modules/platform';
+import { usesWine, wineProcessRunning } from '~main/modules/platform';
 import { mainWindow } from '~main/index';
 import { getClientVersion } from '~main/utils';
 import {
@@ -138,7 +138,7 @@ export const isGameRunning = (executablePath: string) =>
 					}
 				);
 		  })
-		: os.platform() === 'linux'
+		: usesWine
 		? wineProcessRunning(path.basename(executablePath))
 		: false;
 

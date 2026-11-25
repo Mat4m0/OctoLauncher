@@ -7,7 +7,7 @@ import fs from 'fs-extra';
 import Logger from 'electron-log/main';
 
 import { mapPort, type PortMapping } from './upnp';
-import { isWindows } from './platform';
+import { isMac, isWindows } from './platform';
 import {
 	MANAGED_MOD_FILES,
 	classifyModFile,
@@ -22,8 +22,15 @@ const bin = () => {
 	const bundled = app.isPackaged
 		? path.join(process.resourcesPath, BIN_NAME)
 		: path.join(app.getAppPath(), 'resources', BIN_NAME);
-	if (!isWindows && !fs.existsSync(bundled)) return 'aria2c';
-	return bundled;
+	if (isWindows || fs.existsSync(bundled)) return bundled;
+	// an app started from Finder has no Homebrew folder on its PATH
+	if (isMac)
+		return (
+			['/opt/homebrew/bin/aria2c', '/usr/local/bin/aria2c'].find(p =>
+				fs.existsSync(p)
+			) ?? 'aria2c'
+		);
+	return 'aria2c';
 };
 
 // the static Linux aria2c has one compiled-in CA path; point it at this distro's bundle

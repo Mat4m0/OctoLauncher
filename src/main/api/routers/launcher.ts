@@ -30,7 +30,12 @@ import {
 	gameExeName,
 	loaderExeName
 } from '~main/modules/launchWrapper';
-import { isLinux } from '~main/modules/platform';
+import { isLinux, isMac, usesWine } from '~main/modules/platform';
+import {
+	MACH9_DOWNLOAD_URL,
+	ensureRetinaMode,
+	macWinePrefix
+} from '~main/modules/macWine';
 import { protonWinePrefix } from '~main/modules/proton';
 import {
 	ensureGameDesktopEntry,
@@ -55,6 +60,12 @@ const chainloaderNeeded = async (clientDir: string): Promise<boolean> => {
 };
 
 type StartResult = { ok: boolean; error?: string; errorKey?: string };
+
+const WINE_MISSING = isMac
+	? `Mach9 is needed to run WoW on this Mac. Download it from ${MACH9_DOWNLOAD_URL}, move it to ` +
+	  'Applications, then press Play again.'
+	: 'Wine is needed to run WoW on Linux. Install it with your package manager ' +
+	  '(for example: sudo apt install wine), then press Play again.';
 
 const delay = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
@@ -178,7 +189,7 @@ export const launcherRouter = createTRPCRouter({
 			if (useLoader)
 				await syncVanillaFixesCache(
 					clientDir,
-					proton ? protonWinePrefix() : undefined
+					proton ? protonWinePrefix() : isMac ? macWinePrefix() : undefined
 				);
 			if (needsLoader && !useLoader)
 				Logger.warn(
@@ -197,13 +208,13 @@ export const launcherRouter = createTRPCRouter({
 						'or turn Proton off, then click Play again.',
 					errorKey: 'launch.protonMissing'
 				};
-			if (plan.missing === 'wine')
-				return {
-					ok: false,
-					error:
-						'Wine is needed to run WoW on Linux. Install it with your package manager ' +
-						'(for example: sudo apt install wine), then press Play again.'
-				};
+			if (plan.missing === 'wine') return { ok: false, error: WINE_MISSING };
+			if (isMac && plan.wrapped && /\/wine[^/]*$/.test(plan.command))
+				await ensureRetinaMode(plan.command, macWinePrefix())
+					.then(
+						set => set && Logger.log('Turned on Retina mode in the Wine prefix')
+					)
+					.catch(e => Logger.warn('Could not turn on Retina mode', e));
 			const launchLabel = `${plan.command} ${plan.args.join(' ')}`.trim();
 			Logger.log(
 				`Launching${plan.wrapped ? ' via a wrapper' : ''}: ${launchLabel}` +
@@ -215,8 +226,13 @@ export const launcherRouter = createTRPCRouter({
 				);
 			let child: ChildProcess;
 			try {
-				child = isLinux
-					? await spawnGame(plan.command, plan.args, clientDir, gameEnv(plan.env))
+				child = usesWine
+					? await spawnGame(
+							plan.command,
+							plan.args,
+							clientDir,
+							gameEnv(plan.env)
+					  )
 					: spawn(plan.command, plan.args, {
 							cwd: clientDir,
 							detached: !minimizeToTrayOnPlay,
@@ -229,7 +245,7 @@ export const launcherRouter = createTRPCRouter({
 			} catch (e) {
 				Logger.error('Failed to launch the game', e);
 				// a flagged exe fails with ERROR_VIRUS_INFECTED, which libuv has no errno for
-				if (!isLinux && (e as NodeJS.ErrnoException)?.code === 'UNKNOWN')
+				if (!usesWine && (e as NodeJS.ErrnoException)?.code === 'UNKNOWN')
 					return {
 						ok: false,
 						error:
@@ -238,16 +254,11 @@ export const launcherRouter = createTRPCRouter({
 						errorKey: 'launch.blockedByAntivirus'
 					};
 				if (
-					isLinux &&
+					usesWine &&
 					plan.wrapped &&
 					(e as NodeJS.ErrnoException)?.code === 'ENOENT'
 				)
-					return {
-						ok: false,
-						error:
-							'Wine is needed to run WoW on Linux. Install it with your package manager ' +
-							'(for example: sudo apt install wine), then press Play again.'
-					};
+					return { ok: false, error: WINE_MISSING };
 				const message = e instanceof Error ? e.message : String(e);
 				return { ok: false, error: `Failed to launch the game: ${message}` };
 			}
@@ -273,8 +284,8 @@ export const launcherRouter = createTRPCRouter({
 			};
 			// The loader, Proton and the Linux game scope or session can return before the game ends, so
 			// those launches follow the game process itself. A first Proton start builds its prefix first.
-			const followGameProcess = useLoader || isLinux;
-			const appearWithinMs = isLinux ? 120_000 : 30_000;
+			const followGameProcess = useLoader || usesWine;
+			const appearWithinMs = usesWine ? 120_000 : 30_000;
 			const watchGame = (onExit: () => void) => {
 				if (followGameProcess) {
 					void (async () => {

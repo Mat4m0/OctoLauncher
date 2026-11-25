@@ -2,7 +2,7 @@ import path from 'path';
 
 import fs from 'fs-extra';
 
-import { isLinux, toWinePath } from './platform';
+import { toWinePath, usesWine } from './platform';
 
 let queue: Promise<unknown> = Promise.resolve();
 
@@ -36,7 +36,7 @@ const writeCache = async (
 		return;
 	}
 	// VanillaFixes compares these with its own Windows paths, so use the Wine view under Wine
-	const base = isLinux ? toWinePath(clientDir, winePrefix) : clientDir;
+	const base = usesWine ? toWinePath(clientDir, winePrefix) : clientDir;
 	const body = names.map(n => path.win32.join(base, n)).join('\r\n');
 	await fs.writeFile(cache, body, 'utf8').catch(() => {});
 };
