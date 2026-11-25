@@ -1,4 +1,4 @@
-import { Settings, Minus, X } from 'lucide-react';
+import { Settings, Minus, Square, Copy, X } from 'lucide-react';
 import { useState } from 'react';
 
 import { api } from '~renderer/utils/api';
@@ -9,6 +9,9 @@ import PreferencesDialog from './PreferencesDialog';
 import TextButton from './styled/TextButton';
 import LanguageDropdown from './LanguageDropdown';
 
+// macOS draws its own window buttons on the left
+const isMac = window.electron?.process?.platform === 'darwin';
+
 const TopBar = () => {
 	const t = useT();
 	const [safeToQuit, setSafeToQuit] = useState(true);
@@ -17,7 +20,11 @@ const TopBar = () => {
 			setSafeToQuit(state !== 'verifying' && state !== 'updating')
 	});
 
+	const [maximized, setMaximized] = useState(false);
+	api.general.maximized.useSubscription(undefined, { onData: setMaximized });
+
 	const minimize = api.general.minimize.useMutation();
+	const toggleMaximize = api.general.toggleMaximize.useMutation();
 	const quit = api.general.quit.useMutation();
 	return (
 		<div
@@ -40,41 +47,52 @@ const TopBar = () => {
 						/>
 					)}
 				</DialogButton>
-				<TextButton
-					icon={Minus}
-					title={t('topbar.minimize')}
-					onClick={() => minimize.mutateAsync()}
-					size={16}
-					className="!p-1"
-				/>
-				<DialogButton
-					dialog={close => (
-						<div className="tw-dialog">
-							<h3 className="tw-color">{t('quit.title')}</h3>
-							<hr />
-							<p className="text-blueGray">{t('quit.warn')}</p>
-							<div className="flex gap-2 self-end">
-								<TextButton onClick={close}>{t('quit.return')}</TextButton>
-								<TextButton
-									onClick={() => quit.mutateAsync()}
-									className="text-red"
-								>
-									{t('topbar.quit')}
-								</TextButton>
-							</div>
-						</div>
-					)}
-				>
-					{open => (
+				{!isMac && (
+					<>
 						<TextButton
-							icon={X}
-							title={t('topbar.quit')}
-							onClick={() => (!safeToQuit ? open() : quit.mutateAsync())}
+							icon={Minus}
+							title={t('topbar.minimize')}
+							onClick={() => minimize.mutateAsync()}
 							size={16}
-							className="!p-1 hocus:text-red"
+							className="!p-1"
 						/>
-					)}
-				</DialogButton>
+						<TextButton
+							icon={maximized ? Copy : Square}
+							title={t(maximized ? 'topbar.restore' : 'topbar.maximize')}
+							onClick={() => toggleMaximize.mutateAsync()}
+							size={14}
+							className="!p-1"
+						/>
+						<DialogButton
+							dialog={close => (
+								<div className="tw-dialog">
+									<h3 className="tw-color">{t('quit.title')}</h3>
+									<hr />
+									<p className="text-blueGray">{t('quit.warn')}</p>
+									<div className="flex gap-2 self-end">
+										<TextButton onClick={close}>{t('quit.return')}</TextButton>
+										<TextButton
+											onClick={() => quit.mutateAsync()}
+											className="text-red"
+										>
+											{t('topbar.quit')}
+										</TextButton>
+									</div>
+								</div>
+							)}
+						>
+							{open => (
+								<TextButton
+									icon={X}
+									title={t('topbar.quit')}
+									onClick={() => (!safeToQuit ? open() : quit.mutateAsync())}
+									size={16}
+									className="!p-1 hocus:text-red"
+								/>
+							)}
+						</DialogButton>
+					</>
+				)}
 			</div>
 		</div>
 	);

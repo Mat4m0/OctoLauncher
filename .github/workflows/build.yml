@@ -46,14 +46,14 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install JS dependencies without Windows native addons
+      - name: Install JS dependencies (stormlib-node is optional and skipped)
         run: npm install --ignore-scripts --no-audit --no-fund
 
       - name: Download Electron binary
         run: node node_modules/electron/install.js
 
-      - name: Typecheck and build bundles
-        run: npm run dist:mac -- --dir
+      - name: Typecheck, build and package the unsigned app
+        run: npx tsc && npm run build && npx electron-builder --mac dir --arm64
         env:
           ELECTRON_RUN_AS_NODE: ''
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'

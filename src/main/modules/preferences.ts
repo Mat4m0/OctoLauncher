@@ -6,9 +6,10 @@ import { app } from 'electron';
 import Logger from 'electron-log/main';
 
 import { PreferencesSchema } from '~common/schemas';
-import { DEFAULT_ENABLED_MODS } from '~common/mods';
+import { DEFAULT_ENABLED_MODS, getMod } from '~common/mods';
 import { omit } from '~common/utils';
 import { isTorrentMode } from '~main/modules/aria2';
+import { getVulkanCapable } from '~main/modules/hardware';
 
 const portableDir = process.env.PORTABLE_EXECUTABLE_DIR;
 
@@ -44,7 +45,14 @@ const renameRetrying = async (from: string, to: string, attempts = 5) => {
 
 const writeJsonAtomic = async (file: string, data: unknown) => {
 	const tmp = `${file}.tmp`;
-	await fs.writeJSON(tmp, data, { spaces: 2 });
+	// fsync before the rename, or a power cut can leave a file of zeros
+	const fd = await fs.open(tmp, 'w');
+	try {
+		await fs.writeFile(fd, `${JSON.stringify(data, null, 2)}\n`);
+		await fs.fsync(fd);
+	} finally {
+		await fs.close(fd);
+	}
 	await renameRetrying(tmp, file);
 };
 
@@ -59,6 +67,7 @@ abstract class Preferences {
 	static #readOnly = false;
 	static #rememberedClientDir?: string;
 	static #freshInstall = false;
+	static #settingsLost = false;
 
 	static readonly userDataDir = process.env.PORTABLE_EXECUTABLE_DIR
 		? path.join(process.env.PORTABLE_EXECUTABLE_DIR, '.launcher')
@@ -78,6 +87,10 @@ abstract class Preferences {
 		return this.#freshInstall;
 	}
 
+	static get settingsLost() {
+		return this.#settingsLost;
+	}
+
 	static async #detectFreshInstall() {
 		const [settings, install, pending] = await Promise.all([
 			fs.pathExists(this.#settingsPath),
@@ -87,16 +100,28 @@ abstract class Preferences {
 		return !settings && !install && !pending;
 	}
 
-	static #withFreshInstallDefaults(data: PreferencesSchema): PreferencesSchema {
+	static #withFreshInstallDefaults(
+		data: PreferencesSchema,
+		vulkanCapable: boolean
+	): PreferencesSchema {
 		if (!this.#freshInstall || Object.keys(data.mods).length) return data;
 
 		// fresh installs seed every mod EXPLICITLY off; a missing row falls
 		// back to enabled, which keeps legacy profiles untouched
 		const mods = { ...data.mods };
 		for (const id of DEFAULT_ENABLED_MODS)
-			mods[id] = { enabled: false, installedFiles: [], ignoreUpdates: false };
+			if (!getMod(id)?.separateDownload)
+				mods[id] = {
+					enabled: id === 'dxvk' ? vulkanCapable : false,
+					installedFiles: [],
+					ignoreUpdates: false
+				};
 
-		Logger.info('Fresh install: all mods start disabled (opt-in)');
+		Logger.info(
+			`Fresh install: mods opt-in; dxvk default ${
+				vulkanCapable ? 'ON (Vulkan verified)' : 'OFF (Vulkan not confirmed)'
+			}`
+		);
 		return { ...data, mods };
 	}
 
@@ -105,17 +130,31 @@ abstract class Preferences {
 		await fs.ensureDir(this.userDataDir);
 		const settingsPath = this.#settingsPath;
 
+		const bakPath = `${settingsPath}.bak`;
+		const readBak = async () => {
+			const bak = await fs.readJSON(bakPath).catch(() => null);
+			if (!bak || typeof bak !== 'object' || Array.isArray(bak)) return null;
+			Logger.warn(`Recovered settings from ${bakPath}`);
+			return bak as Record<string, unknown>;
+		};
+
 		let json: Record<string, unknown> = {};
+		let fromSettingsFile = false;
+		let lost = false;
 		try {
 			json = await readJsonRetrying(settingsPath);
+			fromSettingsFile = true;
 		} catch (e) {
 			if (isLocked(e)) {
 				this.#readOnly = true;
 				Logger.error(
-					`Could not read ${settingsPath} (${errCode(e)}); running on ` +
-						'defaults and leaving settings untouched for this session.',
+					`Could not read ${settingsPath} (${errCode(e)}); leaving settings ` +
+						'untouched for this session.',
 					e
 				);
+				const bak = await readBak();
+				if (bak) json = bak;
+				else lost = true;
 			} else {
 				if (errCode(e) !== 'ENOENT') {
 					Logger.warn(`${settingsPath} is unreadable; keeping a copy`, e);
@@ -129,9 +168,20 @@ abstract class Preferences {
 				if (recovered && typeof recovered === 'object') {
 					Logger.warn(`Recovered settings from ${settingsPath}.tmp`);
 					json = recovered as Record<string, unknown>;
+				} else if (errCode(e) !== 'ENOENT') {
+					const bak = await readBak();
+					if (bak) json = bak;
+					else lost = true;
+				} else {
+					lost = true;
 				}
 			}
 		}
+		this.#settingsLost = lost && !this.#freshInstall;
+		if (this.#settingsLost)
+			Logger.warn(
+				'Settings could not be read or recovered: following the game folder, changing nothing in it'
+			);
 
 		const merged = dropUndefined({
 			...json,
@@ -140,9 +190,14 @@ abstract class Preferences {
 		});
 
 		const parsed = PreferencesSchema.safeParse(merged);
+		const vulkanCapable = this.#freshInstall ? await getVulkanCapable() : false;
+		if (parsed.success && fromSettingsFile)
+			await fs
+				.copy(settingsPath, bakPath)
+				.catch(e => Logger.warn('Could not keep a copy of the settings', e));
 		if (parsed.success)
 			return this.#withKnownClientDir(
-				this.#withFreshInstallDefaults(parsed.data)
+				this.#withFreshInstallDefaults(parsed.data, vulkanCapable)
 			);
 
 		Logger.warn(

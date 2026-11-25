@@ -31,6 +31,10 @@ const run = async () => {
 		return;
 	}
 
+	// the addon may have moved to a branch this clone has never checked out
+	if (!(await git.listBranches({ fs, dir })).includes(branch))
+		await git.branch({ fs, dir, ref: branch, object: `${remote}/${branch}` });
+
 	await git.checkout({
 		fs,
 		dir,

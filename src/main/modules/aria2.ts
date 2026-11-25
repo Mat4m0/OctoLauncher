@@ -7,25 +7,47 @@ import fs from 'fs-extra';
 import Logger from 'electron-log/main';
 
 import { mapPort, type PortMapping } from './upnp';
+import { isMac, isWindows } from './platform';
+import {
+	MANAGED_MOD_FILES,
+	classifyModFile,
+	noteDownloadSize
+} from './playerFiles';
 
 const TORRENT_NAME = 'client';
 
-const bundledWindowsBin = () =>
-	app.isPackaged
-		? path.join(process.resourcesPath, 'aria2c.exe')
-		: path.join(app.getAppPath(), 'resources', 'aria2c.exe');
+const BIN_NAME = isWindows ? 'aria2c.exe' : 'aria2c';
 
-const macAria2Candidates = ['/opt/homebrew/bin/aria2c', '/usr/local/bin/aria2c'];
+const bin = () => {
+	const bundled = app.isPackaged
+		? path.join(process.resourcesPath, BIN_NAME)
+		: path.join(app.getAppPath(), 'resources', BIN_NAME);
+	if (isWindows || fs.existsSync(bundled)) return bundled;
+	// an app started from Finder has no Homebrew folder on its PATH
+	if (isMac)
+		return (
+			['/opt/homebrew/bin/aria2c', '/usr/local/bin/aria2c'].find(p =>
+				fs.existsSync(p)
+			) ?? 'aria2c'
+		);
+	return 'aria2c';
+};
 
-export const findAria2 = () =>
-	process.platform === 'darwin'
-		? macAria2Candidates.find(fs.existsSync)
-		: bundledWindowsBin();
-
-const bin = () => findAria2() ?? macAria2Candidates[0];
+// the static Linux aria2c has one compiled-in CA path; point it at this distro's bundle
+const CA_BUNDLES = [
+	'/etc/ssl/certs/ca-certificates.crt',
+	'/etc/pki/tls/certs/ca-bundle.crt',
+	'/etc/ssl/ca-bundle.pem',
+	'/etc/ssl/cert.pem'
+];
+const caArgs = (): string[] => {
+	if (isWindows) return [];
+	const found = CA_BUNDLES.find(p => fs.existsSync(p));
+	return found ? [`--ca-certificate=${found}`] : [];
+};
 
 type SyncOpts = {
-	torrentUrl: string;
+	torrent: string;
 	clientDir: string;
 	totalBytes?: number;
 	checkIntegrity?: boolean;
@@ -57,11 +79,7 @@ const ensureJunction = async (clientDir: string): Promise<string> => {
 		}
 		await fs.remove(link);
 	} catch {}
-	await fs.symlink(
-		target,
-		link,
-		process.platform === 'win32' ? 'junction' : 'dir'
-	);
+	await fs.symlink(target, link, 'junction');
 	return staging;
 };
 
@@ -83,6 +101,17 @@ const parseProgress = (
 	line: string,
 	totalHint: number
 ): SyncProgress | undefined => {
+	const chk =
+		/CHK:([\d.]+(?:B|KiB|MiB|GiB|TiB))\/([\d.]+(?:B|KiB|MiB|GiB|TiB))\((\d+)%\)/.exec(
+			line
+		);
+	if (chk)
+		return {
+			progress: parseInt(chk[3], 10) / 100,
+			bytesDone: toBytes(chk[1]),
+			bytesTotal: toBytes(chk[2]) || totalHint,
+			bytesPerSecond: 0
+		};
 	const frac =
 		/([\d.]+(?:B|KiB|MiB|GiB|TiB))\/([\d.]+(?:B|KiB|MiB|GiB|TiB))\((\d+)%\)/.exec(
 			line
@@ -106,11 +135,38 @@ export const stopSyncing = (): void => {
 	syncChild = undefined;
 };
 
+// aria2's cached .torrent metadata, matched by extension since the server picks the
+// filename; --continue would otherwise keep reusing a stale copy
+const clearTorrentMetadata = async (dir: string): Promise<void> => {
+	const entries = await fs.readdir(dir).catch(() => [] as string[]);
+	await Promise.all(
+		entries
+			.filter(n => /\.torrent(\.aria2)?$/i.test(n))
+			.map(n => fs.remove(path.join(dir, n)).catch(() => undefined))
+	);
+};
+
+export class SyncCancelled extends Error {
+	constructor() {
+		super('download cancelled');
+	}
+}
+
+export class SyncStalled extends Error {
+	constructor() {
+		super('download stalled');
+	}
+}
+
+// --bt-stop-timeout misses an aria2c that hangs or stops printing
+const STALL_MS = 10 * 60_000;
+
 export const syncClient = (opts: SyncOpts): Promise<void> =>
 	new Promise<void>((resolve, reject) => {
 		let child: ChildProcess | undefined;
 		ensureJunction(opts.clientDir)
-			.then(dir => {
+			.then(async dir => {
+				await clearTorrentMetadata(dir);
 				const args = [
 					`--dir=${dir}`,
 					`--seed-time=${opts.seedTime ?? 0}`,
@@ -137,17 +193,44 @@ export const syncClient = (opts: SyncOpts): Promise<void> =>
 					...(opts.selectFiles?.length
 						? [`--select-file=${opts.selectFiles.join(',')}`]
 						: []),
+					...caArgs(),
 					'--stop-with-process=' + process.pid,
-					opts.torrentUrl
+					opts.torrent
 				];
 				Logger.log(`aria2c ${args.join(' ')}`);
+				if (opts.signal?.aborted) throw new SyncCancelled();
 				child = spawn(bin(), args, { windowsHide: true });
 				syncChild = child;
+
+				let stopped: Error | undefined;
+				let lastBytes = -1;
+				let lastChecked = '';
+				let lastMove = Date.now();
+				const watchdog = setInterval(() => {
+					if (Date.now() - lastMove < STALL_MS || stopped) return;
+					Logger.warn(
+						`aria2c made no progress for ${
+							STALL_MS / 60_000
+						} minutes; stopping it`
+					);
+					stopped = new SyncStalled();
+					child?.kill();
+				}, 15_000);
 
 				const onLine = (buf: Buffer) => {
 					for (const line of buf.toString().split(/\r?\n/)) {
 						if (!line.trim()) continue;
 						const p = parseProgress(line, opts.totalBytes ?? 0);
+						const checked =
+							/CHK:([\d.]+(?:B|KiB|MiB|GiB|TiB))/.exec(line)?.[1] ?? '';
+						if (
+							(p && p.bytesDone > lastBytes) ||
+							(checked && checked !== lastChecked)
+						) {
+							lastMove = Date.now();
+							if (p) lastBytes = p.bytesDone;
+							lastChecked = checked;
+						}
 						if (p) opts.onProgress?.(p);
 						else Logger.log(`[aria2] ${line}`);
 					}
@@ -155,12 +238,20 @@ export const syncClient = (opts: SyncOpts): Promise<void> =>
 				child.stdout?.on('data', onLine);
 				child.stderr?.on('data', onLine);
 
-				opts.signal?.addEventListener('abort', () => child?.kill());
+				opts.signal?.addEventListener('abort', () => {
+					stopped ??= new SyncCancelled();
+					child?.kill();
+				});
 
-				child.on('error', reject);
+				child.on('error', e => {
+					clearInterval(watchdog);
+					reject(e);
+				});
 				child.on('close', code => {
+					clearInterval(watchdog);
 					if (syncChild === child) syncChild = undefined;
-					if (code === 0) resolve();
+					if (stopped) reject(stopped);
+					else if (code === 0) resolve();
 					else reject(new Error(`aria2c exited with code ${code}`));
 				});
 			})
@@ -180,10 +271,10 @@ export const downloadIsComplete = async (): Promise<boolean> => {
 
 export const clearTorrentResumeState = async (): Promise<void> => {
 	const dir = path.join(app.getPath('userData'), 'torrent-root');
-	await Promise.all([
-		fs.remove(path.join(dir, `${TORRENT_NAME}.aria2`)),
-		fs.remove(path.join(dir, `${TORRENT_NAME}.torrent`))
-	]);
+	await fs
+		.remove(path.join(dir, `${TORRENT_NAME}.aria2`))
+		.catch(() => undefined);
+	await clearTorrentMetadata(dir);
 };
 
 export const torrentUrl = (): string | undefined =>
@@ -197,11 +288,201 @@ export const raidVisualsUrl = (): string | undefined =>
 export const clientPatchUrl = (): string | undefined =>
 	import.meta.env.MAIN_VITE_CLIENT_PATCH_URL || undefined;
 
-export const fetchTorrentSha = async (url: string): Promise<string> => {
-	const r = await fetch(url);
-	if (!r.ok) throw new Error(`HTTP ${r.status}`);
-	const buf = Buffer.from(await r.arrayBuffer());
-	return crypto.createHash('sha1').update(buf).digest('hex');
+export type TorrentFile = { path: string[]; length: number };
+
+export type ClientTorrent = {
+	sha: string;
+	bytes: Buffer;
+	name: string;
+	files: TorrentFile[];
+	webSeeds: string[];
+	pieceLength: number;
+	pieces: Buffer;
+	file: string;
+};
+
+const TORRENT_TRIES = 3;
+const TORRENT_TIMEOUT_MS = 20_000;
+
+const localTorrentFile = () =>
+	path.join(app.getPath('userData'), 'client-download.torrent');
+
+const parseClientTorrent = (
+	bytes: Buffer
+): Omit<ClientTorrent, 'sha' | 'bytes' | 'file'> => {
+	const [t] = bdecode(bytes) as [
+		{
+			'url-list'?: unknown;
+			'info'?: {
+				'name'?: unknown;
+				'piece length'?: unknown;
+				'pieces'?: unknown;
+				'files'?: { path?: unknown; length?: unknown }[];
+			};
+		},
+		number
+	];
+	const info = t?.info;
+	const files = info?.files;
+	if (
+		!info ||
+		typeof info.name !== 'string' ||
+		typeof info['piece length'] !== 'number' ||
+		typeof info.pieces !== 'string' ||
+		info.pieces.length === 0 ||
+		info.pieces.length % 20 !== 0 ||
+		!Array.isArray(files) ||
+		!files.length
+	)
+		throw new Error('not a client torrent');
+	for (const f of files)
+		if (
+			!Array.isArray(f.path) ||
+			!f.path.length ||
+			f.path.some(p => typeof p !== 'string') ||
+			typeof f.length !== 'number' ||
+			f.length < 0
+		)
+			throw new Error('client torrent has a malformed file entry');
+	return {
+		name: info.name,
+		files: files as TorrentFile[],
+		webSeeds: [t['url-list'] ?? []]
+			.flat()
+			.filter((u): u is string => typeof u === 'string'),
+		pieceLength: info['piece length'],
+		pieces: Buffer.from(info.pieces, 'latin1')
+	};
+};
+
+const syncedTorrentFile = () =>
+	path.join(app.getPath('userData'), 'client-synced.torrent');
+
+export const saveSyncedTorrent = async (
+	torrent: ClientTorrent
+): Promise<void> => {
+	const file = syncedTorrentFile();
+	const tmp = `${file}.${process.pid}.tmp`;
+	await fs.writeFile(tmp, torrent.bytes);
+	await fs.rename(tmp, file);
+};
+
+export const readSyncedTorrent = async (
+	sha: string | undefined
+): Promise<ClientTorrent | undefined> => {
+	if (!sha) return undefined;
+	const bytes = await fs.readFile(syncedTorrentFile()).catch(() => null);
+	if (!bytes || crypto.createHash('sha1').update(bytes).digest('hex') !== sha)
+		return undefined;
+	try {
+		return {
+			...parseClientTorrent(bytes),
+			bytes,
+			sha,
+			file: syncedTorrentFile()
+		};
+	} catch {
+		return undefined;
+	}
+};
+
+export const changedSameSizeFiles = (
+	prev: ClientTorrent,
+	next: ClientTorrent
+): number[] => {
+	const offsets = (t: ClientTorrent) => {
+		let o = 0;
+		return t.files.map(f => {
+			const start = o;
+			o += f.length;
+			return start;
+		});
+	};
+	const prevOffsets = offsets(prev);
+	const nextOffsets = offsets(next);
+	const prevIndex = new Map(
+		prev.files.map((f, i) => [f.path.join('/').toLowerCase(), i])
+	);
+	const coveringPieces = (t: ClientTorrent, start: number, length: number) => {
+		const first = Math.floor(start / t.pieceLength);
+		const last = Math.floor((start + length - 1) / t.pieceLength);
+		return t.pieces.subarray(first * 20, (last + 1) * 20).toString('hex');
+	};
+	const changed: number[] = [];
+	next.files.forEach((f, i) => {
+		const j = prevIndex.get(f.path.join('/').toLowerCase());
+		if (j === undefined || prev.files[j].length !== f.length || f.length === 0)
+			return;
+		const same =
+			prev.pieceLength === next.pieceLength &&
+			prevOffsets[j] % prev.pieceLength === nextOffsets[i] % next.pieceLength &&
+			coveringPieces(prev, prevOffsets[j], f.length) ===
+				coveringPieces(next, nextOffsets[i], f.length);
+		if (!same) changed.push(i + 1);
+	});
+	return changed;
+};
+
+const fetchClientTorrent = async (url: string, tries = TORRENT_TRIES) => {
+	let lastError: unknown;
+	for (let attempt = 1; attempt <= tries; attempt++) {
+		const ctrl = new AbortController();
+		const timer = setTimeout(() => ctrl.abort(), TORRENT_TIMEOUT_MS);
+		try {
+			const r = await fetch(url, { signal: ctrl.signal });
+			if (!r.ok) throw new Error(`HTTP ${r.status}`);
+			const bytes = Buffer.from(await r.arrayBuffer());
+			return {
+				...parseClientTorrent(bytes),
+				bytes,
+				sha: crypto.createHash('sha1').update(bytes).digest('hex')
+			};
+		} catch (e) {
+			lastError = e;
+			Logger.warn(`Client torrent fetch ${attempt}/${tries} failed`, e);
+			if (attempt < tries)
+				await new Promise(r => setTimeout(r, attempt * 2_000));
+		} finally {
+			clearTimeout(timer);
+		}
+	}
+	throw lastError instanceof Error ? lastError : new Error(String(lastError));
+};
+
+let lastTorrent: { torrent: ClientTorrent; at: number } | undefined;
+
+export const lastLoadedTorrentSha = (): string | undefined =>
+	lastTorrent?.torrent.sha;
+
+export const publishedTorrentSha = async (url: string): Promise<string> =>
+	(await fetchClientTorrent(url, 1)).sha;
+
+export const loadClientTorrent = async (
+	url: string
+): Promise<ClientTorrent> => {
+	const t = await fetchClientTorrent(url);
+	const file = localTorrentFile();
+	const tmp = `${file}.${process.pid}.tmp`;
+	await fs.writeFile(tmp, t.bytes);
+	await fs.rename(tmp, file);
+	const torrent = { ...t, file };
+	lastTorrent = { torrent, at: Date.now() };
+	return torrent;
+};
+
+export const bytesStillNeeded = async (
+	clientDir: string,
+	torrent: ClientTorrent,
+	selection: number[]
+): Promise<number> => {
+	let need = 0;
+	for (const i of selection) {
+		const f = torrent.files[i - 1];
+		if (!f) continue;
+		const st = await fs.stat(path.join(clientDir, ...f.path)).catch(() => null);
+		need += Math.max(0, f.length - (st && st.size <= f.length ? st.size : 0));
+	}
+	return need;
 };
 
 const bdecode = (buf: Buffer, pos = 0): [unknown, number] => {
@@ -242,6 +523,30 @@ const bdecode = (buf: Buffer, pos = 0): [unknown, number] => {
 		throw new Error('bencode: invalid string length');
 	const start = colon + 1;
 	return [buf.toString('latin1', start, start + len), start + len];
+};
+
+export const clientDownloadFileUrl = async (
+	name: string
+): Promise<string | undefined> => {
+	const url = torrentUrl();
+	if (!url) return undefined;
+	try {
+		const torrent =
+			lastTorrent && Date.now() - lastTorrent.at < 10 * 60_000
+				? lastTorrent.torrent
+				: await fetchClientTorrent(url, 1);
+		const seed = torrent.webSeeds.find(u => u.startsWith('https://'));
+		// keep the torrent's spelling: web seed paths are case-sensitive
+		const listed = torrent.files.find(
+			f => f.path.length === 1 && f.path[0].toLowerCase() === name.toLowerCase()
+		)?.path[0];
+		if (!seed || !listed) return undefined;
+		return `${seed.endsWith('/') ? seed : `${seed}/`}${encodeURIComponent(
+			torrent.name
+		)}/${encodeURIComponent(listed)}`;
+	} catch {
+		return undefined;
+	}
 };
 
 const torrentDataArchives = (torrentBytes: Buffer): Set<string> => {
@@ -305,13 +610,11 @@ const LEGACY_ARCHIVES: Record<string, number> = {
 
 export const pruneStaleArchives = async (
 	clientDir: string,
-	url: string,
+	torrent: ClientTorrent,
 	_owned: Set<string>
 ): Promise<string[]> => {
 	try {
-		const r = await fetch(url);
-		if (!r.ok) return [];
-		const bytes = Buffer.from(await r.arrayBuffer());
+		const bytes = torrent.bytes;
 		const expected = torrentDataArchives(bytes);
 		if (!expected.size) return [];
 		for (const u of [clientPatchUrl(), raidVisualsUrl()])
@@ -346,29 +649,35 @@ export const pruneStaleArchives = async (
 
 // files the torrent ships but a mod toggle owns; the sync must not re-add
 // them or count their absence as an incomplete tree
-const LAUNCHER_OWNED_FILES = new Set(['d3d9.dll']);
+const LAUNCHER_OWNED_FILES = new Set(['d3d9.dll', 'realmlist.wtf']);
 const isLauncherOwned = (parts: string[]) =>
 	parts.length === 1 && LAUNCHER_OWNED_FILES.has(parts[0].toLowerCase());
 
+const isPlayerFile = async (
+	clientDir: string,
+	parts: string[],
+	length: number
+): Promise<boolean> => {
+	if (parts.length !== 1) return false;
+	noteDownloadSize(parts[0], length);
+	if (!MANAGED_MOD_FILES.has(parts[0].toLowerCase())) return false;
+	return (await classifyModFile(clientDir, parts[0], length)).kind === 'player';
+};
+
 export const torrentDownloadSelection = async (
 	clientDir: string,
-	url: string,
+	torrent: ClientTorrent,
 	dropMismatched = false
 ): Promise<number[] | null> => {
 	try {
-		const r = await fetch(url);
-		if (!r.ok) return null;
-		const [torrent] = bdecode(Buffer.from(await r.arrayBuffer())) as [
-			{ info?: { files?: { path?: string[]; length?: number }[] } },
-			number
-		];
-		const files = torrent?.info?.files ?? [];
+		const files = torrent.files;
 		if (!files.length) return null;
 		const need: number[] = [];
 		let missing = false;
 		for (let i = 0; i < files.length; i++) {
 			const f = files[i];
 			if (!f.path?.length || typeof f.length !== 'number') return null;
+			if (await isPlayerFile(clientDir, f.path, f.length)) continue;
 			if (isLauncherOwned(f.path)) continue;
 			const dest = path.join(clientDir, ...f.path);
 			const st = await fs.stat(dest).catch(() => null);
@@ -394,21 +703,32 @@ export const torrentDownloadSelection = async (
 	}
 };
 
+export const torrentFilesToCheck = async (
+	clientDir: string,
+	torrent: ClientTorrent,
+	indices: number[] = torrent.files.map((_, i) => i + 1)
+): Promise<number[]> => {
+	const out: number[] = [];
+	for (const i of indices) {
+		const f = torrent.files[i - 1];
+		if (!f) continue;
+		if (await isPlayerFile(clientDir, f.path, f.length)) continue;
+		if (isLauncherOwned(f.path)) continue;
+		out.push(i);
+	}
+	return out;
+};
+
 export const torrentTreeIntact = async (
 	clientDir: string,
-	url: string
+	torrent: ClientTorrent
 ): Promise<boolean> => {
 	try {
-		const r = await fetch(url);
-		if (!r.ok) return false;
-		const [torrent] = bdecode(Buffer.from(await r.arrayBuffer())) as [
-			{ info?: { files?: { path?: string[]; length?: number }[] } },
-			number
-		];
-		const files = torrent?.info?.files ?? [];
+		const files = torrent.files;
 		if (!files.length) return false;
 		for (const f of files) {
 			if (!f.path?.length || typeof f.length !== 'number') return false;
+			if (await isPlayerFile(clientDir, f.path, f.length)) continue;
 			if (isLauncherOwned(f.path)) continue;
 			const st = await fs
 				.stat(path.join(clientDir, ...f.path))
@@ -422,28 +742,114 @@ export const torrentTreeIntact = async (
 	}
 };
 
-const LOCALE_ASSERT_OFFSET = 0x1b2115;
 const pristineWowPath = () =>
 	path.join(app.getPath('userData'), 'base-WoW.exe');
 
-export const refreshPristineWow = async (clientDir: string): Promise<void> => {
+const LOCALE_CARRIERS = [
+	'enUS',
+	'koKR',
+	'frFR',
+	'deDE',
+	'zhCN',
+	'zhTW',
+	'esES',
+	'xxYY'
+];
+
+const STOCK_LOCALE_SITES: [number, Buffer][] = [
+	[0x1b2115, Buffer.from([0xa1, 0xa4, 0xa2, 0xc2, 0x00])],
+	[0x253c, Buffer.from([0x33, 0xf6, 0x8b, 0xff, 0x8b, 0x04, 0xb5])],
+	...LOCALE_CARRIERS.map((name, i): [number, Buffer] => [
+		0x45591c - i * 8,
+		Buffer.from(name, 'latin1')
+	])
+];
+
+export const isPristineWow = async (clientDir: string): Promise<boolean> => {
 	const exe = path.join(clientDir, 'WoW.exe');
-	if (!(await fs.pathExists(exe))) return;
+	if (!(await fs.pathExists(exe))) return false;
 	const fd = await fs.open(exe, 'r');
 	try {
-		const b = Buffer.alloc(1);
-		await fs.read(fd, b, 0, 1, LOCALE_ASSERT_OFFSET);
-		if (b[0] === 0xa1) {
-			await fs.copy(exe, pristineWowPath(), { overwrite: true });
-			Logger.log('Cached pristine WoW.exe base');
+		for (const [offset, stock] of STOCK_LOCALE_SITES) {
+			const b = Buffer.alloc(stock.length);
+			const { bytesRead } = await fs.read(fd, b, 0, b.length, offset);
+			if (bytesRead !== b.length || !b.equals(stock)) return false;
 		}
+		return true;
 	} finally {
 		await fs.close(fd);
 	}
 };
 
+export const isWowExeDamaged = async (clientDir: string): Promise<boolean> => {
+	const exe = path.join(clientDir, 'WoW.exe');
+	if (!(await fs.pathExists(exe))) return false;
+	const fd = await fs.open(exe, 'r');
+	try {
+		const dos = Buffer.alloc(64);
+		const { bytesRead } = await fs.read(fd, dos, 0, dos.length, 0);
+		if (bytesRead < dos.length || dos.toString('latin1', 0, 2) !== 'MZ')
+			return true;
+		const pe = Buffer.alloc(4);
+		const r = await fs.read(fd, pe, 0, pe.length, dos.readUInt32LE(0x3c));
+		return r.bytesRead < pe.length || pe.toString('latin1') !== 'PE\0\0';
+	} finally {
+		await fs.close(fd);
+	}
+};
+
+// tag site only: the index site shares the first torrent piece with other files
+export const isLauncherPatchedWow = async (
+	clientDir: string
+): Promise<boolean> => {
+	const exe = path.join(clientDir, 'WoW.exe');
+	if (!(await fs.pathExists(exe))) return false;
+	const fd = await fs.open(exe, 'r');
+	try {
+		const tag = Buffer.alloc(5);
+		await fs.read(fd, tag, 0, tag.length, 0x1b2115);
+		return (
+			tag[0] === 0xb8 &&
+			LOCALE_CARRIERS.some(c =>
+				tag.subarray(1).equals(Buffer.from(c, 'latin1').reverse())
+			)
+		);
+	} finally {
+		await fs.close(fd);
+	}
+};
+
+export const isClientBaseWow = async (clientDir: string): Promise<boolean> => {
+	if (!(await isPristineWow(clientDir))) return false;
+	const cache = pristineWowPath();
+	const exe = path.join(clientDir, 'WoW.exe');
+	const [base, cur] = await Promise.all([
+		fs.stat(cache).catch(() => null),
+		fs.stat(exe)
+	]);
+	if (!base || base.size !== cur.size) return false;
+	const [a, b] = await Promise.all([fs.readFile(cache), fs.readFile(exe)]);
+	return a.equals(b);
+};
+
+export const refreshPristineWow = async (clientDir: string): Promise<void> => {
+	if (!(await isPristineWow(clientDir))) return;
+	await fs.copy(path.join(clientDir, 'WoW.exe'), pristineWowPath(), {
+		overwrite: true
+	});
+	Logger.log('Cached pristine WoW.exe base');
+};
+
 export const readPristineWow = async (clientDir: string): Promise<Buffer> => {
 	const cache = pristineWowPath();
+	// a cached base of another size is stale; the stock exe is its own base
+	const exe = path.join(clientDir, 'WoW.exe');
+	if (
+		(await fs.pathExists(cache)) &&
+		(await isPristineWow(clientDir).catch(() => false)) &&
+		(await fs.stat(cache)).size !== (await fs.stat(exe)).size
+	)
+		return fs.readFile(exe);
 	if (await fs.pathExists(cache)) return fs.readFile(cache);
 	return fs.readFile(path.join(clientDir, 'WoW.exe'));
 };
@@ -481,6 +887,9 @@ export const startSeeding = async (
 	try {
 		const url = torrentUrl();
 		if (!url) return;
+		const from = (await fs.pathExists(localTorrentFile()))
+			? localTorrentFile()
+			: url;
 		const dir = await ensureJunction(clientDir);
 		if (!wantSeeding || seeder) return;
 		const args = [
@@ -499,8 +908,9 @@ export const startSeeding = async (
 			`--max-overall-upload-limit=${uploadLimit}`,
 			'--summary-interval=0',
 			'--console-log-level=warn',
+			...caArgs(),
 			'--stop-with-process=' + process.pid,
-			url
+			from
 		];
 		Logger.log('aria2c (seed) ' + args.join(' '));
 		const child = spawn(bin(), args, { windowsHide: true });

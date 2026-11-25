@@ -3,122 +3,44 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { app } from 'electron';
+import { app, shell } from 'electron';
 import Logger from 'electron-log/main';
 
 import Preferences from './preferences';
 
-export type ExclusionResult = { ok: boolean; error?: string; paths?: string[] };
-
-const psSingleQuote = (s: string) => `'${s.replace(/'/g, "''")}'`;
-
-export const addDefenderExclusions = async (): Promise<ExclusionResult> => {
-	if (os.platform() !== 'win32')
-		return {
-			ok: false,
-			error: 'Antivirus exclusions are only needed on Windows.'
-		};
-
+// the player adds exclusions by hand; Defender flags apps that add their own
+export const defenderExclusionFolders = (): string[] => {
+	if (os.platform() !== 'win32') return [];
 	const clientDir = Preferences.data.clientDir;
-	if (!clientDir)
-		return {
-			ok: false,
-			error: 'Set your game folder first, then add the exclusion.'
-		};
-
 	const launcherDir =
 		process.env.PORTABLE_EXECUTABLE_DIR ?? path.dirname(app.getPath('exe'));
-	const paths = [...new Set([clientDir, launcherDir])];
-
-	const resultFile = path.join(
-		os.tmpdir(),
-		`octo-defender-${process.pid}-${Date.now()}.txt`
-	);
-	const write = (v: string) =>
-		`Set-Content -LiteralPath ${psSingleQuote(
-			resultFile
-		)} -Value "${v}" -Encoding ASCII`;
-
-	const inner = [
-		'try {',
-		...paths.map(
-			p =>
-				`  Add-MpPreference -ExclusionPath ${psSingleQuote(
-					p
-				)} -ErrorAction Stop`
-		),
-		'  Add-MpPreference -ExclusionProcess "WoW.exe" -ErrorAction Stop',
-		'  Add-MpPreference -ExclusionProcess "VanillaFixes.exe" -ErrorAction Stop',
-		`  ${write('OK')}`,
-		'} catch {',
-		'  $t = $false',
-		'  try { $t = (Get-MpComputerStatus).IsTamperProtected } catch {}',
-		`  if ($t) { ${write('TAMPER')} } else { ${write('FAIL')} }`,
-		'}'
-	].join('\n');
-	const encoded = Buffer.from(inner, 'utf16le').toString('base64');
-
-	const outer =
-		'try { Start-Process powershell -Verb RunAs -WindowStyle Hidden -Wait ' +
-		"-ArgumentList '-NoProfile','-NonInteractive'," +
-		`'-EncodedCommand','${encoded}' } catch { exit 1 }`;
-
-	return new Promise<ExclusionResult>(resolve => {
-		const child = spawn(
-			'powershell.exe',
-			['-NoProfile', '-NonInteractive', '-Command', outer],
-			{ windowsHide: true }
-		);
-		let stderr = '';
-		child.stderr.on('data', d => (stderr += String(d)));
-		child.on('error', e => {
-			Logger.error('Failed to launch PowerShell for Defender exclusion', e);
-			resolve({ ok: false, error: 'Could not run Windows PowerShell.' });
-		});
-		child.on('exit', code => {
-			let result: string | null = null;
-			try {
-				result = fs.readFileSync(resultFile, 'utf8').trim();
-			} catch {}
-			try {
-				fs.rmSync(resultFile, { force: true });
-			} catch {}
-
-			if (result === 'OK') {
-				Logger.info(`Added Defender exclusions: ${paths.join(', ')}`);
-				resolve({ ok: true, paths });
-				return;
-			}
-			if (result === 'TAMPER') {
-				Logger.error('Defender exclusion blocked by Tamper Protection');
-				resolve({
-					ok: false,
-					error:
-						'Windows Security Tamper Protection is blocking this. Turn it off in Windows Security, or add your game folder by hand under Exclusions.'
-				});
-				return;
-			}
-			if (result === 'FAIL') {
-				Logger.error(`Defender exclusion failed: ${stderr}`.trim());
-				resolve({
-					ok: false,
-					error:
-						'Windows would not add the exclusion. You can add your game folder by hand in Windows Security, under Exclusions.'
-				});
-				return;
-			}
-			Logger.warn(
-				`Defender exclusion: no result (exit ${code}) ${stderr}`.trim()
-			);
-			resolve({
-				ok: false,
-				error:
-					'Windows did not grant permission. Click Yes on the User Account Control prompt to add the exclusion.'
-			});
-		});
-	});
+	return [
+		...new Set(
+			[clientDir, launcherDir]
+				.filter((p): p is string => !!p)
+				.map(p => path.normalize(p))
+		)
+	];
 };
 
+export const openDefenderExclusionSettings = async (): Promise<boolean> => {
+	if (os.platform() !== 'win32') return false;
+	for (const uri of [
+		'windowsdefender://threatsettings/',
+		'windowsdefender:',
+		'ms-settings:windowsdefender'
+	]) {
+		try {
+			await shell.openExternal(uri);
+			return true;
+		} catch (e) {
+			Logger.warn(`Could not open ${uri}`, e);
+		}
+	}
+	return false;
+};
+
+// only files the client torrent ships: a missing one is reported as quarantined
 const SENSITIVE_FILES = [
 	'WoW.exe',
 	'VanillaFixes.exe',

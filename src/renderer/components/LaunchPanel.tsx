@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import cls from 'classnames';
 import log from 'electron-log/renderer';
 
@@ -10,7 +10,7 @@ import { useT } from '~renderer/i18n';
 import Button from './styled/Button';
 import DialogButton from './styled/DialogButton';
 import ClientDirDialog from './ClientDirDialog';
-import TextButton from './styled/TextButton';
+import PriorityLogin from './PriorityLogin';
 
 const formatDuration = (seconds: number) => {
 	const s = Math.max(0, Math.round(seconds));
@@ -64,8 +64,6 @@ const LaunchPanel = () => {
 	});
 
 	const { data: pref } = api.preferences.get.useQuery();
-	const { data: runtime } = api.general.runtime.useQuery();
-	const openLink = api.general.openLink.useMutation();
 
 	const [modsStatus, setModsStatus] = useState<ModsStatus>();
 	api.mods.observe.useSubscription(undefined, {
@@ -74,8 +72,23 @@ const LaunchPanel = () => {
 
 	const verify = api.updater.verify.useMutation();
 	const update = api.updater.update.useMutation();
+	const cancel = api.updater.cancel.useMutation();
 	const start = api.launcher.start.useMutation();
 	const applyMods = api.mods.applyAll.useMutation();
+	const message = status.messageKey
+		? t(status.messageKey, status.messageArgs)
+		: status.message;
+	const startError =
+		start.data && !start.data.ok
+			? start.data.errorKey
+				? t(start.data.errorKey)
+				: start.data.error
+			: undefined;
+
+	useEffect(() => {
+		if (start.data?.errorKey === 'launch.blockedByAntivirus')
+			window.dispatchEvent(new Event('av-guide'));
+	}, [start.data]);
 
 	const modRows = modsStatus?.mods ?? [];
 	const enabledIds = new Set(modRows.filter(m => m.enabled).map(m => m.id));
@@ -99,7 +112,10 @@ const LaunchPanel = () => {
 					{t('launch.play')}
 				</Button>
 			) : (
-				<Button onClick={() => verify.mutateAsync()}>
+				<Button
+					disabled={verify.isLoading}
+					onClick={() => verify.mutateAsync()}
+				>
 					{t('launch.retry')}
 				</Button>
 			),
@@ -133,7 +149,10 @@ const LaunchPanel = () => {
 		},
 		updateAvailable: {
 			button: (
-				<Button onClick={() => update.mutateAsync()}>
+				<Button
+					disabled={update.isLoading}
+					onClick={() => update.mutateAsync()}
+				>
 					{t('launch.update')}
 				</Button>
 			),
@@ -155,18 +174,25 @@ const LaunchPanel = () => {
 									</span>
 								</>
 							)}
-						<span className="break-all">{status.message}</span>
+						<span className="break-all">{message}</span>
 					</p>
 				</div>
 			)
 		},
 		updating: {
-			button: <Button disabled>{t('launch.updating')}</Button>,
+			button: status.cancellable ? (
+				<Button
+					disabled={cancel.isLoading}
+					onClick={() => cancel.mutateAsync()}
+				>
+					{t('launch.cancel')}
+				</Button>
+			) : (
+				<Button disabled>{t('launch.updating')}</Button>
+			),
 			helperText: (
 				<div className="-mb-2 flex flex-col gap-1">
-					{status.message && (
-						<p className="s1 truncate text-blueGray">{status.message}</p>
-					)}
+					{message && <p className="s1 truncate text-blueGray">{message}</p>}
 					<ProgressDetails status={status} />
 				</div>
 			)
@@ -218,7 +244,10 @@ const LaunchPanel = () => {
 		},
 		failed: {
 			button: (
-				<Button onClick={() => verify.mutateAsync()}>
+				<Button
+					disabled={verify.isLoading}
+					onClick={() => verify.mutateAsync()}
+				>
 					{t('launch.retry')}
 				</Button>
 			),
@@ -226,60 +255,21 @@ const LaunchPanel = () => {
 				<div className="-mb-2">
 					<p>
 						<span className="text-orange">{t('launch.errorLabel')}</span>{' '}
-						{status.message}
+						{message}
 					</p>
 					<p className="s1 text-blueGray">{t('launch.verifyHint')}</p>
 				</div>
 			)
 		}
 	};
-	const wineDownloadUrl =
-		runtime?.kind === 'wine' ? runtime.downloadUrl : undefined;
-	const aria2DownloadUrl =
-		runtime?.kind === 'wine' ? runtime.aria2DownloadUrl : undefined;
 
 	return (
 		<div className="flex gap-3">
 			<div className="flex flex-grow flex-col justify-end gap-3">
-				{runtime?.kind === 'wine' && !runtime.available && (
-					<p className="s1 -mb-2 text-orange">
-						{runtime.executable && runtime.rosettaAvailable === false ? (
-							'Rosetta 2 is required to run the 32-bit game client.'
-						) : (
-							<>
-								Free Wine Staging is required.{' '}
-								{wineDownloadUrl && (
-									<TextButton
-										onClick={() => openLink.mutate(wineDownloadUrl)}
-										className="inline !p-0 text-warmGreen"
-									>
-										Download Wine
-									</TextButton>
-								)}
-							</>
-						)}
-					</p>
-				)}
-				{runtime?.kind === 'wine' && !runtime.aria2Available && (
-					<p className="s1 -mb-2 text-orange">
-						Native aria2 is required for game downloads.{' '}
-						{aria2DownloadUrl && (
-							<TextButton
-								onClick={() => openLink.mutate(aria2DownloadUrl)}
-								className="inline !p-0 text-warmGreen"
-							>
-								Install aria2
-							</TextButton>
-						)}
-					</p>
-				)}
+				<PriorityLogin />
 				{props[status.state].helperText ??
-					(status.message && (
-						<p className="s1 -mb-2 text-blueGray">{status.message}</p>
-					))}
-				{start.data && !start.data.ok && start.data.error && (
-					<p className="s1 -mb-2 text-orange">{start.data.error}</p>
-				)}
+					(message && <p className="s1 -mb-2 text-blueGray">{message}</p>)}
+				{startError && <p className="s1 -mb-2 text-orange">{startError}</p>}
 				<div className="tw-loading-wrapper">
 					{status.progress !== undefined && (
 						<div
@@ -299,7 +289,9 @@ const LaunchPanel = () => {
 					)}
 				</div>
 			</div>
-			{props[status.state].button}
+			<div className="flex h-[82px] shrink-0 self-end">
+				{props[status.state].button}
+			</div>
 		</div>
 	);
 };

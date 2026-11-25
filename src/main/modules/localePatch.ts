@@ -4,7 +4,6 @@ import fs from 'fs-extra';
 import Logger from 'electron-log/main';
 
 import Preferences from './preferences';
-import { StormLib, STREAM_READ_ONLY } from './stormLib';
 
 // old installs may have a copied patch-<letter>.mpq that overrides patch-5; sweep by marker
 const ALL_LETTERS = 'BCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
@@ -13,23 +12,39 @@ const MARKER = 'octolocale.marker';
 const patchFile = (dataDir: string, letter: string) =>
 	path.join(dataDir, `patch-${letter}.mpq`);
 
+// stormlib-node is optional: its bundled static library does not link on macOS. Without it no
+// archive counts as ours, so nothing is removed.
+type StormLib = {
+	SFileOpenArchive(path: string, flags: number): bigint;
+	SFileHasFile(archive: bigint, path: string): boolean;
+	SFileCloseArchive(archive: bigint): void;
+};
+
+const loadStormLib = (): StormLib | undefined => {
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-var-requires
+		return require('stormlib-node');
+	} catch {
+		return undefined;
+	}
+};
+
+const STREAM_FLAG_READ_ONLY = 0x100;
+
 const isOurPatch = (mpqPath: string): boolean => {
 	if (!fs.existsSync(mpqPath)) return false;
+	const storm = loadStormLib();
+	if (!storm) return false;
+	const { SFileOpenArchive, SFileHasFile, SFileCloseArchive } = storm;
 	try {
-		const h = StormLib.SFileOpenArchive(mpqPath, STREAM_READ_ONLY);
+		const h = SFileOpenArchive(mpqPath, STREAM_FLAG_READ_ONLY);
 		try {
-			return StormLib.SFileHasFile(h, MARKER);
+			return SFileHasFile(h, MARKER);
 		} finally {
-			StormLib.SFileCloseArchive(h);
+			SFileCloseArchive(h);
 		}
 	} catch {
-		if (process.platform !== 'darwin') return false;
-		const tracked = Preferences.data.localePatchLetter;
-		return (
-			!!tracked &&
-			path.resolve(mpqPath) ===
-				path.resolve(patchFile(path.dirname(mpqPath), tracked))
-		);
+		return false;
 	}
 };
 

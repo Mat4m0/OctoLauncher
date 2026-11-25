@@ -2,22 +2,28 @@ import path from 'node:path';
 
 import { app, dialog, shell } from 'electron';
 import Logger from 'electron-log/main';
+import { observable } from '@trpc/server/observable';
 import { z } from 'zod';
 
 import { mainWindow } from '~main/index';
 import Preferences from '~main/modules/preferences';
 import {
-	addDefenderExclusions,
-	detectAntivirusBlocks
+	defenderExclusionFolders,
+	detectAntivirusBlocks,
+	openDefenderExclusionSettings
 } from '~main/modules/defender';
 import { detectHardware, recommendFarClip } from '~main/modules/hardware';
-import { getGameRuntimeStatus } from '~main/modules/gameRuntime';
+import {
+	checkAntivirusBlocks,
+	restoreBlockedFiles
+} from '~main/modules/avRestore';
+import { listProtonVersions } from '~main/modules/proton';
 
 import { createTRPCRouter, publicProcedure } from '../trpc';
 
 export const generalRouter = createTRPCRouter({
 	appVersion: publicProcedure.query(() => app.getVersion()),
-	runtime: publicProcedure.query(() => getGameRuntimeStatus()),
+	protonVersions: publicProcedure.query(() => listProtonVersions()),
 	hardware: publicProcedure.query(() => {
 		const hardware = Preferences.data.hardware ?? null;
 		return { hardware, recommendedFarClip: recommendFarClip(hardware) };
@@ -29,6 +35,25 @@ export const generalRouter = createTRPCRouter({
 	}),
 	quit: publicProcedure.mutation(() => app.quit()),
 	minimize: publicProcedure.mutation(() => mainWindow?.minimize()),
+	toggleMaximize: publicProcedure.mutation(() => {
+		if (!mainWindow) return;
+		if (mainWindow.isMaximized()) mainWindow.unmaximize();
+		else mainWindow.maximize();
+	}),
+	maximized: publicProcedure.subscription(() =>
+		observable<boolean>(emit => {
+			const win = mainWindow;
+			if (!win) return () => undefined;
+			const send = () => emit.next(win.isMaximized());
+			send();
+			win.on('maximize', send);
+			win.on('unmaximize', send);
+			return () => {
+				win.off('maximize', send);
+				win.off('unmaximize', send);
+			};
+		})
+	),
 	openLink: publicProcedure
 		.input(z.string().url())
 		.mutation(({ input }) => shell.openExternal(input)),
@@ -41,8 +66,13 @@ export const generalRouter = createTRPCRouter({
 		const file = Logger.transports.file.getFile().path;
 		shell.openPath(path.normalize(file));
 	}),
-	addDefenderExclusion: publicProcedure.mutation(() => addDefenderExclusions()),
+	defenderFolders: publicProcedure.query(() => defenderExclusionFolders()),
+	openDefenderSettings: publicProcedure.mutation(() =>
+		openDefenderExclusionSettings()
+	),
 	antivirusBlocks: publicProcedure.query(() => detectAntivirusBlocks()),
+	checkAntivirus: publicProcedure.mutation(() => checkAntivirusBlocks()),
+	restoreBlockedFiles: publicProcedure.mutation(() => restoreBlockedFiles()),
 	filePicker: publicProcedure
 		.input(
 			z.object({

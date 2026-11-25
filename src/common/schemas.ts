@@ -60,7 +60,7 @@ export const PreferencesSchema = z.object({
 	cleanWdb: f.boolean(true),
 	shareDownloads: f.boolean(true),
 	locale: z
-		.enum(['enUS', 'deDE', 'zhCN', 'esES', 'ptBR', 'ruRU'])
+		.enum(['enUS', 'deDE', 'zhCN', 'esES', 'ptBR', 'ruRU', 'koKR', 'frFR'])
 		.default('enUS'),
 	localePatchLetter: z.string().optional(),
 	localePatchLocale: z.string().optional(),
@@ -68,6 +68,8 @@ export const PreferencesSchema = z.object({
 	syncedTorrentHash: z.string().optional(),
 	activeTorrentHash: z.string().optional(),
 	activeClientDir: z.string().optional(),
+	activeRepatch: z.boolean().optional(),
+	activeSelection: z.array(z.number().int().positive()).optional(),
 	raidVisualsHash: z.string().optional(),
 	clientPatchHash: z.string().optional(),
 	vmmfWrittenIndex: z.number().int().nonnegative().optional(),
@@ -78,13 +80,18 @@ export const PreferencesSchema = z.object({
 			x: z.number(),
 			y: z.number(),
 			width: z.number(),
-			height: z.number()
+			height: z.number(),
+			maximized: z.boolean().optional()
 		})
 		.nullish(),
 	config: ConfigWtfSchema.default({}),
 	mods: z.record(ModStateSchema).default({}),
+	modFileHashes: z.record(z.string()).optional(),
 	hardware: HardwareInfoSchema.optional(),
-	farClipUserSet: z.boolean().optional()
+	farClipUserSet: z.boolean().optional(),
+	// Linux: start the game with Proton (the folder that holds its `proton` script) instead of Wine
+	useProton: f.boolean(),
+	protonPath: z.string().optional()
 });
 export type PreferencesSchema = z.infer<typeof PreferencesSchema>;
 
@@ -108,8 +115,10 @@ export const AddonDataSchema = z.object({
 		'upToDate',
 		'outOfDate',
 		'downloading',
-		'invalid'
+		'invalid',
+		'custom'
 	]),
+	edited: z.boolean().optional(),
 	git: z.string().optional(),
 	toc: TocDataSchema.optional(),
 	description: z.string().optional(),

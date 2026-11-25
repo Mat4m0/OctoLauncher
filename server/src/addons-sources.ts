@@ -16,7 +16,7 @@ export const defaultSources: AddonSource[] = [
 		description: 'Combat HUD showing health and power as arcs around your character'
 	},
 	{
-		git: 'https://octowow.st/git/shaga/AtlasLoot.git',
+		git: 'https://git.octowow.st/git/shaga/AtlasLoot.git',
 		name: 'AtlasLoot',
 		branch: 'main',
 		description:
@@ -35,8 +35,9 @@ export const defaultSources: AddonSource[] = [
 		description: 'Automated "Looking For More" broadcaster for Turtle WoW dungeons and raids'
 	},
 	{
-		git: 'https://github.com/shirsig/aux-addon-vanilla.git',
+		git: 'https://git.octowow.st/git/Dusk/aux-addon-ClassicAPI.git',
 		name: 'aux-addon',
+		branch: 'master',
 		description: 'Auction House replacement with advanced filtering and search'
 	},
 	{ git: 'https://github.com/absir/Bagshui.git' },
@@ -51,12 +52,21 @@ export const defaultSources: AddonSource[] = [
 		description: 'Adds castbars, debuffs, and class icons to the default Blizzard nameplates'
 	},
 	{
-		git: 'https://github.com/MDGitHubRepo/CallOfElements.git',
+		git: 'https://git.octowow.st/git/shaga/CallOfElements.git',
+		name: 'CallOfElements',
+		branch: 'main',
 		description: 'All-in-one Shaman totem bar and totem/healing manager'
 	},
-	{ git: 'https://github.com/bhhandley/CleveRoidMacros.git' },
 	{
-		git: 'https://github.com/Cinecom/ConsumesManager.git',
+		git: 'https://git.octowow.st/git/shaga/Chronos.git',
+		name: 'Chronos',
+		branch: 'main',
+		description: 'Timekeeping/scheduling library required by Call of Elements'
+	},
+	{
+		git: 'https://git.octowow.st/git/Horyoshi/ConsumesManager.git',
+		name: 'ConsumesManager',
+		branch: 'main',
 		description: 'Tracks consumables and food buffs across alts, bank, and mail'
 	},
 	{
@@ -79,7 +89,8 @@ export const defaultSources: AddonSource[] = [
 		description: 'Adds extra resource bars (mana, energy, rage) to the UI'
 	},
 	{
-		git: 'https://github.com/SeVeN7000/FishingBuddy.git',
+		git: 'https://git.octowow.st/git/Dusk/FishingBuddy.git',
+		branch: 'master',
 		description: 'Auto-equips fishing gear and tracks catches, fish, and zone info'
 	},
 	{ git: 'https://github.com/tilare/FlightTracker.git' },
@@ -96,8 +107,9 @@ export const defaultSources: AddonSource[] = [
 	{ git: 'https://github.com/vatichild/GudaPlates.git' },
 	{ git: 'https://github.com/andresuarezschou/HCDeaths.git' },
 	{
-		git: 'https://github.com/Arthur-Helias/InstanceJournal.git',
-		description: "Encounter Journal reimagined for Turtle WoW"
+		git: 'https://git.octowow.st/git/lightblade/InstanceJournal.git',
+		branch: 'master',
+		description: 'Encounter Journal reimagined for Turtle WoW'
 	},
 	{
 		git: 'https://github.com/Einherjarn/ItemRack.git',
@@ -108,7 +120,12 @@ export const defaultSources: AddonSource[] = [
 		name: '_LazyPig',
 		description: 'Auto-dismount, auto-accept, auto-roll, and chat spam filter. /lp to configure'
 	},
-	{ git: 'https://github.com/Spartelfant/LevelRange-Turtle.git' },
+	{
+		git: 'https://git.octowow.st/git/Dusk/LevelRange-Octo.git',
+		name: 'LevelRange-Octo',
+		branch: 'main',
+		description: 'Shows the level range of each zone on the world map'
+	},
 	{ git: 'https://github.com/tilare/MessageBox.git' },
 	{
 		git: 'https://github.com/tdymel/ModifiedPowerAuras.git',
@@ -124,18 +141,28 @@ export const defaultSources: AddonSource[] = [
 	},
 	{ git: 'https://github.com/tilare/MovementTracker.git' },
 	{
-		git: 'https://github.com/Dusk-92/NampowerSettings.git',
+		git: 'https://git.octowow.st/git/shaga/NampowerSettings.git',
+		name: 'NampowerSettings',
+		branch: 'master',
 		description: 'Settings panel for the Nampower spellqueue addon'
 	},
 	{
-		git: 'https://github.com/BlackHobbiT/necrosis-twow.git',
+		git: 'https://git.octowow.st/git/shaga/Necrosis.git',
 		name: 'Necrosis',
+		branch: 'main',
 		description: 'Warlock helper: pets, soul shards, summoning, demon timers'
 	},
 	{
 		git: 'https://github.com/gnwl/NotGrid.git',
 		name: 'notgrid',
 		description: 'Grid-like compact party/raid frames with buff/debuff, aggro, and proximity tracking'
+	},
+	{
+		git: 'https://git.octowow.st/git/rwang0417/OctoAI.git',
+		name: 'OctoAI',
+		branch: 'main',
+		description:
+			'Ask an AI about your own character: /octoai opens a copyable summary of gear, quests, talents, spells, and professions to paste into any AI chat'
 	},
 	{
 		git: 'https://github.com/zanthor/OG-RaidHelper.git',
@@ -150,12 +177,23 @@ export const defaultSources: AddonSource[] = [
 		description: 'Paladin buff and assignment manager for raids and parties'
 	},
 	{
-		git: 'https://github.com/Cliencer/pfExtend.git',
+		git: 'https://git.octowow.st/git/lightblade/pfExtend.git',
+		branch: 'main',
 		description: 'pfQuest extension showing all monster drops and quest chains. /pfex'
 	},
-	{ git: 'https://github.com/shagu/pfQuest.git' },
-	{ git: 'https://github.com/shagu/pfQuest-turtle.git' },
-	{ git: 'https://github.com/shagu/pfUI.git' },
+	{
+		git: 'https://git.octowow.st/git/lightblade/pfQuest.git',
+		branch: 'master'
+	},
+	{
+		git: 'https://git.octowow.st/git/lightblade/pfQuest-turtle.git',
+		branch: 'master'
+	},
+	{
+		git: 'https://git.octowow.st/git/praxis/pfUI.git',
+		name: 'pfUI',
+		branch: 'main'
+	},
 	{
 		git: 'https://github.com/jrc13245/pfUI-addonskinner.git',
 		description: 'pfUI module that re-skins other addons to match the pfUI theme'
@@ -174,7 +212,8 @@ export const defaultSources: AddonSource[] = [
 		git: 'https://github.com/npfs666/ProcDoc.git',
 		description: 'Visual proc alerts with pulsing images so you never miss them'
 	},
-	{ git: 'https://github.com/SabineWren/Quiver.git' },
+	// main has no Quiver.bundle.lua (a build output); the release branch carries it
+	{ git: 'https://github.com/SabineWren/Quiver.git', branch: 'latest-release' },
 	{
 		git: 'https://github.com/hazlema/Rested.git',
 		description: 'Progress bar showing your rested XP while resting'
@@ -189,10 +228,13 @@ export const defaultSources: AddonSource[] = [
 		git: 'https://github.com/shagu/ShaguPlates.git',
 		description: 'Nameplates with castbars and class colors. /splates'
 	},
-	{ git: 'https://github.com/shagu/ShaguTweaks.git' },
 	{
-		git: 'https://github.com/shagu/ShaguTweaks-extras.git',
-		description: 'Extras module for ShaguTweaks (additional UI tweaks)'
+		git: 'https://git.octowow.st/git/shaga/ShagaTweaks.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/shaga/ShagaTweaks-extras.git',
+		branch: 'main'
 	},
 	{ git: 'https://github.com/pepopo978/SimpleActionSets.git' },
 	{
@@ -219,17 +261,20 @@ export const defaultSources: AddonSource[] = [
 	},
 	{ git: 'https://github.com/sica42/TurtleCalendar.git' },
 	{
-		git: 'https://github.com/sica42/TurtleMail.git',
+		git: 'https://git.octowow.st/git/Dusk/TurtleMail.git',
+		branch: 'master',
 		description: 'Mailbox UI enhancement: bulk send, search, multi-mail'
 	},
 	{ git: 'https://github.com/tempranova/turtlerp.git', name: 'TurtleRP' },
 	{ git: 'https://github.com/CosminPOP/TWThreat.git' },
 	{
-		git: 'https://github.com/RetroCro/unitscan-turtle-hc.git',
+		git: 'https://git.octowow.st/git/shaga/unitscan-turtle-hc.git',
+		branch: 'master',
 		description: 'Hardcore unitscan fork for Turtle WoW that alerts on rares, elites, and dangerous mobs'
 	},
 	{
-		git: 'https://github.com/whtmst/UnitXP_SP3_Addon.git',
+		git: 'https://git.octowow.st/git/shaga/UnitXP_SP3_Addon.git',
+		branch: 'main',
 		description: 'Settings UI for the UnitXP SuperWoW client patch'
 	},
 	{
@@ -237,17 +282,235 @@ export const defaultSources: AddonSource[] = [
 		description: 'Smart consolidated buff frames with extensive customization'
 	},
 	{
-		git: 'https://octowow.st/git/shaga/LifeSafer_LowHealthWarning.git',
+		git: 'https://git.octowow.st/git/Dusk/LifeSafer_LowHealthWarning.git',
 		branch: 'main',
 		description: 'Low health and mana fullscreen flash warnings with heartbeat sound; re-enables the hidden Blizzard alert effect'
 	},
 	{
 		git: 'https://github.com/Fiurs-Hearth/WIIIUI.git',
+		branch: 'master',
 		description: 'Compact custom UI replacement for Turtle WoW'
 	},
 	{ git: 'https://github.com/refaim/WIM.git' },
 	{
 		git: 'https://github.com/Arthur-Helias/ZonesLevel.git',
 		description: "Shows zone level range under the title on the world map"
+	},
+	{
+		git: 'https://git.octowow.st/git/Ade/AdeAlts.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Ade/AdePet.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Armadel/QuickAssist.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Blaststar/Questie-Octo.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/brues/TwitchEmotes.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Clank-o-matic/OldSchool-HitSplashes.git',
+		name: 'OSHS',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Dusk/HealerProtection.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Dusk/WowRadio-Vanilla.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Fayz/TimeToDrink.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/jKalfis/pfUI-DQB.git',
+		branch: 'master'
+	},
+	{
+		git: 'https://git.octowow.st/git/John-The-Baptist/OctoAuctionator.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/John-The-Baptist/OctoQuestRewards.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/lightblade/CawDPSMeter.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/lightblade/CombatLedger.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/lightblade/GreedMeter.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/lightblade/WeakestAuras.git',
+		branch: 'master'
+	},
+	{
+		git: 'https://git.octowow.st/git/Markuru/IWantItAll.git',
+		branch: 'master'
+	},
+	{
+		git: 'https://git.octowow.st/git/Markuru/RecipeRadar.git',
+		branch: 'octowow'
+	},
+	{
+		git: 'https://git.octowow.st/git/Meta/MetaHunt.git',
+		branch: 'master'
+	},
+	{
+		git: 'https://git.octowow.st/git/Mquadrat/FBHealBox.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/olzon/GearSetTooltips.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/olzon/GuildRecipes_Octo.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/olzon/ImprovedGuildWindow_OC.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/olzon/InnerFireWatch.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/olzon/LockpickTooltip.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/olzon/MainCharacterTag_OC.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/olzon/MiniMage_TWOW.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/olzon/MinimapButtonBag_Octo.git',
+		branch: 'master'
+	},
+	{
+		git: 'https://git.octowow.st/git/praxis/AdvancedTradeSkillWindow2.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Relationship/RelationshipsAchievements.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Relationship/RelationshipsAttune.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Relationship/RelationshipsAuctionPrice.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Relationship/RelationshipsDashboard.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Relationship/RelationshipsPVP.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Relationship/RelationshipsQuestAndItemBrowser.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Relationship/RelationshipsThreatPlates.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Relationship/SexyMap.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/ShempError/BulwarkFrame.git',
+		branch: 'master'
+	},
+	{
+		git: 'https://git.octowow.st/git/ShempError/DopingControl.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/ShempError/TotemBar.git',
+		branch: 'master'
+	},
+	{
+		git: 'https://git.octowow.st/git/ShempError/Vampify.git',
+		branch: 'master'
+	},
+	{
+		git: 'https://git.octowow.st/git/stealthzi/BoarChallengePlus.git',
+		branch: 'master'
+	},
+	{
+		git: 'https://git.octowow.st/git/stealthzi/ClassToolkit.git',
+		branch: 'master'
+	},
+	{
+		git: 'https://git.octowow.st/git/stealthzi/EasyRoute.git',
+		branch: 'master'
+	},
+	{
+		git: 'https://git.octowow.st/git/stealthzi/EquipCompareAdv.git',
+		branch: 'master'
+	},
+	{
+		git: 'https://git.octowow.st/git/stealthzi/MacroMaker.git',
+		branch: 'master'
+	},
+	{
+		git: 'https://git.octowow.st/git/stealthzi/PokeHuntLog.git',
+		branch: 'master'
+	},
+	{
+		git: 'https://git.octowow.st/git/ShempError/AnySCT.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Fayz/SHPlates.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Fayz/BigTimer.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Fayz/IRC.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Lupo/VimWowSettings.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Lupo/VimFinder.git',
+		branch: 'main'
+	},
+	{
+		git: 'https://git.octowow.st/git/Mr_Rosh/Lern2Spell.git',
+		branch: 'master'
 	}
 ];

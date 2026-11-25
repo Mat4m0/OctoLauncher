@@ -33,23 +33,19 @@ jobs:
         env:
           ELECTRON_RUN_AS_NODE: ''
 
-      - name: Upload portable exe
-        uses: actions/upload-artifact@v4
-        with:
-          name: OctoLauncher-portable
-          path: dist/OctoLauncher.exe
-
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
           name: OctoLauncher-installer
-          path: dist/OctoLauncher_Installer.exe
+          path: |
+            distprod/OctoLauncher_Installer-*.exe
+            distprod/OctoLauncher_Installer-*.exe.blockmap
+            distprod/latest.yml
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/OctoLauncher.exe
-            dist/OctoLauncher_Installer.exe
-            dist/latest.yml
-            dist/OctoLauncher_Installer.exe.blockmap
+            distprod/OctoLauncher_Installer-*.exe
+            distprod/OctoLauncher_Installer-*.exe.blockmap
+            distprod/latest.yml

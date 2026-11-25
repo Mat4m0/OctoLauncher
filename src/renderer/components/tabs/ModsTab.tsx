@@ -35,6 +35,32 @@ const RowState = ({ row }: { row: ModRowStatus }) => {
 	return null;
 };
 
+const OwnFiles = ({ row }: { row: ModRowStatus }) => {
+	const t = useT();
+	const useLauncher = api.mods.useLauncherVersion.useMutation();
+	if (!row.customFiles?.length) return null;
+	const files = row.customFiles.join(', ');
+	return (
+		<div className="flex items-baseline gap-2">
+			<span className="s1 text-orange" title={t('mods.ownFileHint', { files })}>
+				{t('mods.ownFile')}
+			</span>
+			<span title={t('mods.useLauncherVersionHint', { files })}>
+				<TextButton
+					onClick={() => useLauncher.mutate({ id: row.id })}
+					loading={useLauncher.isLoading}
+					className="!p-0 text-warmGreen"
+				>
+					<span className="s1">{t('mods.useLauncherVersion')}</span>
+				</TextButton>
+			</span>
+			{useLauncher.error && (
+				<span className="s1 text-red">{useLauncher.error.message}</span>
+			)}
+		</div>
+	);
+};
+
 const ModRow = ({ row }: { row: ModRowStatus }) => {
 	const t = useT();
 	const toggle = api.mods.toggle.useMutation();
@@ -43,28 +69,25 @@ const ModRow = ({ row }: { row: ModRowStatus }) => {
 
 	return (
 		<>
-			<div className="flex items-baseline gap-2">
-				{row.recommended && (
-					<Sparkles size={12} className="shrink-0 text-warmGreen" />
-				)}
-				<span className={cls(row.recommended && 'text-warmGreen')}>
-					{row.name}
-				</span>
-				<span className="s1 text-warmGreen">{row.latestVersion}</span>
+			<div className="flex flex-col">
+				<div className="flex items-baseline gap-2">
+					{row.recommended && (
+						<Sparkles size={12} className="shrink-0 text-warmGreen" />
+					)}
+					<span className={cls(row.recommended && 'text-warmGreen')}>
+						{row.name}
+					</span>
+					<span className="s1 text-warmGreen">{row.latestVersion}</span>
+				</div>
+				<OwnFiles row={row} />
 			</div>
 			<CheckboxInput
 				value={row.enabled}
 				setValue={v => toggle.mutate({ id: row.id, enabled: v })}
-				disabled={!!row.unsupportedReason}
 				className="justify-self-center"
 			/>
 			<div className="flex items-center gap-2">
-				<p
-					className="s1 text-blueGray"
-					title={row.unsupportedReason}
-				>
-					{row.unsupportedReason ?? row.description}
-				</p>
+				<p className="s1 text-blueGray">{row.description}</p>
 				<TextButton
 					icon={ExternalLink}
 					size={14}
@@ -91,14 +114,13 @@ const CustomRow = ({ row }: { row: CustomMod }) => {
 			<CheckboxInput
 				value={row.enabled}
 				setValue={v => toggle.mutate({ name: row.name, enabled: v })}
-				disabled={!!row.unsupportedReason}
 				className="justify-self-center"
 			/>
 		</>
 	);
 };
 
-const AddDllButton = ({ disabledReason }: { disabledReason?: string }) => {
+const AddDllButton = () => {
 	const t = useT();
 	const pick = api.general.filePicker.useMutation();
 	const add = api.mods.addCustomDll.useMutation();
@@ -122,8 +144,6 @@ const AddDllButton = ({ disabledReason }: { disabledReason?: string }) => {
 			<TextButton
 				onClick={onClick}
 				loading={pick.isLoading || add.isLoading}
-				disabled={!!disabledReason}
-				title={disabledReason}
 				className="text-green"
 			>
 				{t('mods.addDll')}
@@ -251,15 +271,8 @@ const ModsTab = () => {
 				<hr />
 				<div className="flex items-baseline justify-between gap-2">
 					<h4 className="tw-color">{t('mods.yourDlls')}</h4>
-					<AddDllButton
-						disabledReason={status?.dllInjectionUnsupportedReason}
-					/>
+					<AddDllButton />
 				</div>
-				{status?.dllInjectionUnsupportedReason && (
-					<p className="s1 text-blueGray">
-						{status.dllInjectionUnsupportedReason}
-					</p>
-				)}
 				{status?.custom?.length ? (
 					<div className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1">
 						{status.custom.map(c => (

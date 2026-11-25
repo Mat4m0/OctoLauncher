@@ -4,6 +4,8 @@ import Logger from 'electron-log/main';
 import { is } from '@electron-toolkit/utils';
 
 import Observable from './observable';
+import Updater from './updater';
+import { isMac } from './platform';
 
 export type SelfUpdaterStatus =
 	| { state: 'idle'; currentVersion: string }
@@ -41,21 +43,18 @@ class SelfUpdaterClass extends Observable<SelfUpdaterStatus> {
 		if (this.#initialized) return;
 		this.#initialized = true;
 
-		if (process.platform !== 'win32') {
-			Logger.info('[selfUpdater] only the Windows update channel is published, skipping');
-			this.status = {
-				state: 'unavailable',
-				currentVersion: app.getVersion()
-			};
-			return;
-		}
-
 		if (is.dev) {
 			Logger.info('[selfUpdater] dev mode, skipping');
 			return;
 		}
 
 		const currentVersion = app.getVersion();
+
+		if (isMac) {
+			Logger.info('[selfUpdater] no macOS update channel is published, skipping');
+			this.status = { state: 'unavailable', currentVersion };
+			return;
+		}
 
 		autoUpdater.logger = Logger;
 		autoUpdater.autoDownload = true;
@@ -115,6 +114,14 @@ class SelfUpdaterClass extends Observable<SelfUpdaterStatus> {
 		if (this._value.state !== 'ready') {
 			Logger.warn(
 				`[selfUpdater] triggerInstall called in state ${this._value.state}, ignoring`
+			);
+			return;
+		}
+		// quitting stops aria2 mid-write and leaves the files it was writing full of holes
+		const game = Updater.status?.state;
+		if (Updater.busy || game === 'verifying' || game === 'updating') {
+			Logger.warn(
+				'[selfUpdater] install clicked while the game files update, ignoring'
 			);
 			return;
 		}

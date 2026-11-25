@@ -12,6 +12,6 @@ cd Tools\launcher
 .\install.ps1
 ```
 
-Output: `dist\OctoLauncher.exe` (portable) and `dist\OctoLauncher_Installer.exe` (NSIS).
+Output: `distprod\OctoLauncher_Installer-<version>.exe` (NSIS), with its blockmap and `latest.yml`.
 
 The `node/` directory is gitignored; it is recreated by `install.ps1`.

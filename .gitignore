@@ -16,6 +16,13 @@ Tools/launcher/node/
 .DS_Store
 Thumbs.db
 
-scripts/*
-!scripts/postinstall.cjs
+scripts/
 hooks/
+
+# aria2c binary, fetched separately and packed into the installers
+resources/aria2c.exe
+
+# Linux AppImage build (Tools/linux/build-appimage.sh)
+.linux-build/
+dist-linux/
+resources/aria2c

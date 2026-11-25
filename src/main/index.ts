@@ -5,12 +5,16 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils';
 import { createIPCHandler } from 'electron-trpc/main';
 import Logger from 'electron-log/main';
 
-import icon from '~build/icon.png?asset';
 import { PreferencesSchema } from '~common/schemas';
 
 import { appRouter } from './api/root';
+import { appIcon } from './modules/appIcon';
+import { isLinux, isMac } from './modules/platform';
 import { stopSyncing, stopSeeding } from './modules/aria2';
 import Preferences from './modules/preferences';
+import { adoptSettingsFromFolder } from './modules/patcher';
+import AuthStore from './modules/authStore';
+import { refreshAtStartup } from './modules/authClient';
 import Updater from './modules/updater';
 import Addons from './modules/addons';
 import Mods from './modules/mods';
@@ -50,21 +54,41 @@ const isOnScreen = (
 	});
 };
 
+const saveWindowPosition = () => {
+	if (!mainWindow || mainWindow.isDestroyed()) return;
+	const { x, y, width, height } = mainWindow.getNormalBounds();
+	Preferences.data = {
+		windowPosition: { x, y, width, height, maximized: mainWindow.isMaximized() }
+	};
+};
+
 const createWindow = async () => {
 	const saved =
 		Preferences.data.rememberPosition &&
 		isOnScreen(Preferences.data.windowPosition)
 			? Preferences.data.windowPosition
 			: undefined;
-	const position = saved ?? { width: 1000, height: 700 };
+	const { maximized, ...position } = saved ?? {
+		width: 1000,
+		height: 700,
+		maximized: false
+	};
 
+	const icon = appIcon();
 	mainWindow = new BrowserWindow({
 		...position,
 		minWidth: 1000,
 		minHeight: 700,
-		icon,
-		frame: false,
-		maximizable: false,
+		...(icon ? { icon } : {}),
+		// macOS keeps its own window buttons (TopBar hides the drawn ones there)
+		...(isMac
+			? {
+					titleBarStyle: 'hidden' as const,
+					trafficLightPosition: { x: 14, y: 14 }
+			  }
+			: { frame: false }),
+		resizable: true,
+		maximizable: true,
 		fullscreenable: false,
 		webPreferences: {
 			preload: join(__dirname, '../preload/index.js'),
@@ -73,6 +97,10 @@ const createWindow = async () => {
 			devTools: true
 		}
 	});
+
+	// some Linux window managers only take the icon when it is set on the existing window
+	if (icon && isLinux) mainWindow.setIcon(icon);
+	if (maximized) mainWindow.maximize();
 
 	mainWindow.webContents.on('render-process-gone', (_e, details) => {
 		Logger.error('Renderer process gone:', details);
@@ -108,12 +136,7 @@ const createWindow = async () => {
 		shell.openExternal(details.url);
 		return { action: 'deny' };
 	});
-	mainWindow.on('close', () => {
-		if (!mainWindow) return;
-		const [x = 0, y = 0] = mainWindow.getPosition();
-		const [width = 0, height = 0] = mainWindow.getSize();
-		Preferences.data = { windowPosition: { x, y, width, height } };
-	});
+	mainWindow.on('close', saveWindowPosition);
 
 	if (is.dev && process.env.ELECTRON_RENDERER_URL) {
 		mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
@@ -127,12 +150,15 @@ const gotSingleInstanceLock = is.dev || app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
 	app.quit();
 } else {
-	app.on('second-instance', () => {
-		if (!mainWindow) return;
+	const bringBack = () => {
+		if (!mainWindow || mainWindow.isDestroyed()) return;
 		if (mainWindow.isMinimized()) mainWindow.restore();
 		if (!mainWindow.isVisible()) mainWindow.show();
 		mainWindow.focus();
-	});
+	};
+	app.on('second-instance', bringBack);
+	// macOS: a click on the Dock icon while the window is hidden during play
+	app.on('activate', bringBack);
 
 	app.whenReady().then(async () => {
 		// defaults on failure so createWindow() below still runs
@@ -142,6 +168,13 @@ if (!gotSingleInstanceLock) {
 			Logger.error('Preferences.load() failed; starting on defaults', e);
 			Preferences.data = PreferencesSchema.parse({});
 		}
+		if (Preferences.settingsLost)
+			await adoptSettingsFromFolder().catch(e =>
+				Logger.error('Could not take the settings from the game folder', e)
+			);
+
+		await AuthStore.load();
+		refreshAtStartup();
 
 		Addons.verify();
 		Updater.verify();
@@ -206,6 +239,8 @@ if (!gotSingleInstanceLock) {
 		stopSeeding();
 		if (settingsFlushed) return;
 		settingsFlushed = true;
+		// the window's own 'close' save would land after this flush
+		saveWindowPosition();
 		event.preventDefault();
 		Promise.race([Preferences.save(), new Promise(r => setTimeout(r, 3000))])
 			.catch(e => Logger.error('Failed to flush settings before quit', e))

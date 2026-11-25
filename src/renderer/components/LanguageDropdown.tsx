@@ -13,7 +13,9 @@ const LOCALES: { value: Lang; code: string; label: string }[] = [
 	{ value: 'zhCN', code: 'Zh', label: '中文' },
 	{ value: 'esES', code: 'Es', label: 'Español' },
 	{ value: 'ptBR', code: 'Pt', label: 'Português' },
-	{ value: 'ruRU', code: 'Ru', label: 'Русский' }
+	{ value: 'ruRU', code: 'Ru', label: 'Русский' },
+	{ value: 'koKR', code: 'Ko', label: '한국어' },
+	{ value: 'frFR', code: 'Fr', label: 'Français' }
 ];
 
 const LanguageDropdown = () => {

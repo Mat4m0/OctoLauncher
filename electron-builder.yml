@@ -32,19 +32,40 @@ npmRebuild: false
 electronLanguages: en
 win:
   artifactName: ${productName}.${ext}
+  target:
+    - nsis
   extraResources:
     - from: resources/aria2c.exe
       to: aria2c.exe
+    - from: build/icon.png
+      to: icon.png
+# built by Tools/linux/build-appimage.sh
+linux:
   target:
-    - nsis
+    - AppImage
+  artifactName: ${productName}-${version}.${ext}
+  executableName: octolauncher
+  category: Game
+  synopsis: OctoWoW launcher
+  icon: build/icon.png
+  extraResources:
+    - from: resources/aria2c
+      to: aria2c
+    - from: build/icon.png
+      to: icon.png
+# built on a Mac with `npm run dist:mac`; the game runs through Mach9 (Tools/mac/README.md)
 mac:
-  artifactName: ${productName}-${arch}.${ext}
-  category: public.app-category.games
-  files:
-    - '!node_modules/stormlib-node/**'
   target:
     - dmg
     - zip
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  category: public.app-category.games
+  icon: build/mac/icon.icns
+  extraResources:
+    - from: build/icon.png
+      to: icon.png
+  files:
+    - '!node_modules/stormlib-node/**'
 nsis:
   # versioned: differential updates need the old blockmap to stay fetchable
   artifactName: ${productName}_Installer-${version}.${ext}
@@ -53,4 +74,4 @@ nsis:
   removeDefaultUninstallWelcomePage: true
 publish:
   - provider: generic
-    url: 'https://octowow.st/launcher-updates/'
+    url: 'https://dl.octowow.st/launcher-updates/'

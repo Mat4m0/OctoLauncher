@@ -2,6 +2,7 @@ import cls from 'classnames';
 import { forwardRef, type HTMLProps } from 'react';
 import { AppWindow, FolderOpen } from 'lucide-react';
 
+import { useT } from '~renderer/i18n';
 import { api, type RouterInputs } from '~renderer/utils/api';
 
 import TextButton from '../styled/TextButton';
@@ -13,6 +14,7 @@ type Props = HTMLProps<HTMLInputElement> & {
 
 const FilePickerInput = forwardRef<HTMLInputElement, Props>(
 	({ setValue, options, className, ...props }, ref) => {
+		const t = useT();
 		const filePicker = api.general.filePicker.useMutation();
 		return (
 			<div className="relative flex grow">
@@ -32,7 +34,7 @@ const FilePickerInput = forwardRef<HTMLInputElement, Props>(
 							? FolderOpen
 							: AppWindow
 					}
-					title="Pick file"
+					title={t('misc.pickFile')}
 					onClick={async () => {
 						const r = await filePicker.mutateAsync(options);
 						if (r.canceled) return;
