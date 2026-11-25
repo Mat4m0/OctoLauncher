@@ -3,7 +3,7 @@ import Logger from 'electron-log/main';
 
 import { mainWindow } from '~main/index';
 import { appIcon } from '~main/modules/appIcon';
-import { isLinux } from '~main/modules/platform';
+import { isLinux, isMac } from '~main/modules/platform';
 
 let tray: Tray | null = null;
 let isMinimizedToTray = false;
@@ -38,7 +38,8 @@ const ensureTray = () => {
 
 export const minimizeToTray = () => {
 	if (!mainWindow) return;
-	ensureTray();
+	// macOS: no menu-bar icon; the Dock icon stays and a click on it brings the window back
+	if (!isMac) ensureTray();
 	mainWindow.hide();
 	isMinimizedToTray = true;
 	Logger.info('Minimized to tray');

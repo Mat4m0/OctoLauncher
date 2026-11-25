@@ -9,7 +9,7 @@ import { PreferencesSchema } from '~common/schemas';
 
 import { appRouter } from './api/root';
 import { appIcon } from './modules/appIcon';
-import { isLinux } from './modules/platform';
+import { isLinux, isMac } from './modules/platform';
 import { stopSyncing, stopSeeding } from './modules/aria2';
 import Preferences from './modules/preferences';
 import { adoptSettingsFromFolder } from './modules/patcher';
@@ -80,7 +80,13 @@ const createWindow = async () => {
 		minWidth: 1000,
 		minHeight: 700,
 		...(icon ? { icon } : {}),
-		frame: false,
+		// macOS keeps its own window buttons (TopBar hides the drawn ones there)
+		...(isMac
+			? {
+					titleBarStyle: 'hidden' as const,
+					trafficLightPosition: { x: 14, y: 14 }
+			  }
+			: { frame: false }),
 		resizable: true,
 		maximizable: true,
 		fullscreenable: false,
@@ -144,12 +150,15 @@ const gotSingleInstanceLock = is.dev || app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
 	app.quit();
 } else {
-	app.on('second-instance', () => {
-		if (!mainWindow) return;
+	const bringBack = () => {
+		if (!mainWindow || mainWindow.isDestroyed()) return;
 		if (mainWindow.isMinimized()) mainWindow.restore();
 		if (!mainWindow.isVisible()) mainWindow.show();
 		mainWindow.focus();
-	});
+	};
+	app.on('second-instance', bringBack);
+	// macOS: a click on the Dock icon while the window is hidden during play
+	app.on('activate', bringBack);
 
 	app.whenReady().then(async () => {
 		// defaults on failure so createWindow() below still runs
